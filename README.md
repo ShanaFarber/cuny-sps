@@ -2,3 +2,5 @@ This is a repository of pojects and assignenets done for CUNY School of Professi
 
 Languages: R, SQL
 Tools: RStudio, Ubuntu, Visual Studio
+
+Link to [RPubs](https://rpubs.com/ShanaFarber).
