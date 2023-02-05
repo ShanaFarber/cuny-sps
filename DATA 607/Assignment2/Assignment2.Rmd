@@ -3,8 +3,8 @@ title: "DATA 607 - Assignment 2"
 author: "Shoshana Farber"
 date: "February 5, 2023"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -19,12 +19,14 @@ library(RPostgres)
 ## Connecting to PostgreSQL Database
 
 ```{r}
+my_pass <- read_file("C:/Users/Shoshana/Documents/pass.txt")
+
 con <- dbConnect(
   Postgres(), 
   host = "localhost", 
   port = 5432,
   user = "postgres",
-  password = rstudioapi::askForPassword(), 
+  password = my_pass, 
   dbname = "cuny-sps"
 )
 ```
