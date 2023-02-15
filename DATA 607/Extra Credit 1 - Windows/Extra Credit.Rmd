@@ -1,0 +1,77 @@
+---
+title: "DATA 607 - EC 1"
+author: "Shoshana Farber"
+date: "February 14, 2023"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(zoo)
+library(scales)
+```
+
+### Loading the Data
+
+Source: [Yahoo Finance BTC-USD](https://finance.yahoo.com/quote/BTC-USD/history?p=BTC-USD). 
+
+The data set tracks the market price and volume of Bitcoin in USD. The data used was from January to December of 2022. 
+
+```{r}
+bitcoins <- read_csv(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA%20607/Extra%20Credit%201%20-%20Windows/BTC-USD.csv"), show_col_types = FALSE)
+
+# change the type of 'Date' column to be a date
+bitcoins$Date <- as.Date(bitcoins$Date)
+
+knitr::kable(head(bitcoins))
+```
+
+### Computing the Average to Date and Six Day Rolling Window for Opening and Closing
+
+```{r open}
+bitcoins_open <- bitcoins %>% 
+  transmute(date = Date, open = Open) %>%
+  mutate(open_ytd_avg = cumsum(open) / seq_along(open),
+         open_six_day_window = rollmean(open, 6, fill = NA))
+
+knitr::kable(head(bitcoins_open))
+```
+
+```{r close}
+bitcoins_close <- bitcoins %>% 
+  transmute(date = Date, close = Close) %>%
+  mutate(close_ytd_avg = cumsum(close) / seq_along(close),
+         close_six_day_window = rollmean(close, 6, fill = NA))
+
+knitr::kable(head(bitcoins_close))
+```
+
+Information on "zoo" package and `rollmean()` function found [here](https://www.rdocumentation.org/packages/zoo/versions/1.8-11/topics/rollmean). 
+
+I combined the two tables:
+
+```{r join-open-close}
+bitcoins_open_close <- inner_join(bitcoins_open, bitcoins_close, on = "Date")
+
+knitr::kable(head(bitcoins_open_close))
+```
+
+### Some Visualization
+
+I plotted the `open_ytd_avg` and `close_ytd_avg`. I used pivot longer to be able to plot both values on the same graph, differentiated by color. 
+
+```{r plot-ytd-avgs}
+bitcoins_open_close %>%
+  pivot_longer(cols = c("open_ytd_avg", "close_ytd_avg"),
+               names_to = "calculation",
+               values_to = "price") %>%
+  ggplot(aes(x = date, y = price, color = calculation)) +
+  geom_line() +
+  scale_y_continuous(labels = dollar_format())
+```
+
+You can see the decrease in the price of Bitcoin over the 2022 year. 
