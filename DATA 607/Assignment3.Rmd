@@ -125,7 +125,7 @@ str_view(test_string_3, '(.)(.)(.).*\\3\\2\\1')
 
 Construct regular expressions to match words that:
 
-- Start and end with the same character.
+- Start and end with the same character.    
 
   `"^(.).*\\1$"`
 
