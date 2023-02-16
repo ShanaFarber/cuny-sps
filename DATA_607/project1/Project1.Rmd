@@ -1,8 +1,11 @@
 ---
 title: "DATA 607 - Project 1"
 author: "Shoshana Farber"
-date: "2023-02-12"
-output: html_document
+date: "February 19, 2023"
+output:
+  html_document:
+    toc: true
+    toc_float: true
 ---
 
 ```{r setup, include=FALSE}
@@ -15,7 +18,7 @@ library(tidyr)
 ### Loading the Text File
 
 ```{r load-txt}
-raw <- readLines("C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA 607/project1/player_stats.txt")
+raw <- readLines(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/project1/player_stats.txt"))
 
 raw[0:5]
 ```
@@ -126,6 +129,6 @@ knitr::kable(head(chess_stats))
 
 ### Exporting to CSV
 
-```{r}
-write.csv(chess_stats, 'C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA 607/chess_stats.csv', row.names = FALSE)
+```{r eval=FALSE}
+write.csv(chess_stats, 'C:/Temp', row.names = FALSE)
 ```
