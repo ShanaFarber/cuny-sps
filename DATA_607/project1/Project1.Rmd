@@ -1,0 +1,131 @@
+---
+title: "DATA 607 - Project 1"
+author: "Shoshana Farber"
+date: "2023-02-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tidyr)
+```
+
+### Loading the Text File
+
+```{r load-txt}
+raw <- readLines("C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA 607/project1/player_stats.txt")
+
+raw[0:5]
+```
+
+In order to figure out what values to extract, I used `str_view` and `str_view_all` to look for patterns within the string to determine the correct regex to use to extract the data within each string. 
+
+```{r eval=FALSE}
+# check for player names
+str_view_all(raw[-c(1,2,3,4)], '\\w+\\s\\w+(\\s\\w+)?(\\s\\w+)?')
+
+# check for total score
+str_view_all(raw, '\\d\\.\\d')
+
+# check for pre_post_ratings
+str_view(raw[-c(1,2,3,4)], '\\d+(P\\d+)?(\\s+)?\\->(\\s+)?\\d+(P\\d+)?')
+
+str_view(raw[-c(1,2,3,4)], '\\d+(P\\d+)?(\\s+)?\\->')
+
+# check for states
+str_view_all(raw[-c(1,2,3,4)], '[A-Z][A-Z]\\s\\|')
+
+# check for rounds
+str_view_all(str_remove(raw, '^\\s+[A-Z].+'), '[WLBDXU]\\s+(\\d+)?\\|')
+```
+
+### Extracting the Information
+
+```{r}
+# player names have at least first and last name and maybe middle initial or multiple middle names
+player_names <- unlist(str_extract_all(raw[-c(1,2,3,4)], '\\w+\\s\\w+(\\s\\w+)?(\\s\\w+)?'))
+
+# totals are the only numbers with a decimal
+totals <- unlist(str_extract_all(raw, '\\d\\.\\d'))
+
+# ratings in the format of number -> number
+pre_post_ratings <- unlist(str_extract_all(raw[-c(1,2,3,4)], '\\d+(P\\d+)?(\\s+)?\\->(\\s+)?\\d+(P\\d+)?'))
+
+pre_ratings <- str_remove(unlist(str_extract_all(unlist(str_extract_all(pre_post_ratings, '\\d+(P\\d+)?(\\s+)?\\->')), '\\d+(P\\d+)?')), 'P\\d+')
+
+# states have two upper case letters
+# first extract all values with two upper case letters, a space, and a pipe so as not to get any values other than the states
+# then extract the states from the list
+states <- unlist(str_extract_all(unlist(str_extract_all(raw[-c(1,2,3,4)], '[A-Z][A-Z]\\s\\|')), '[A-Z][A-Z]'))
+```
+
+### Creating the Data Frame
+
+I combined the extracted information into a data frame `chess_stats`.
+
+```{r create-data-frame}
+chess_stats <- data.frame("player_name" = player_names,
+                          "player_state" = states,
+                          "total" = totals,
+                          "pre_rating" = pre_ratings)
+
+# recast numeric columns
+chess_stats$total <- as.numeric(chess_stats$total)
+chess_stats$pre_rating <- as.numeric(chess_stats$pre_rating)
+```
+
+Now I needed to calculate the average pre-rating of opponents for each player:
+
+In order to calculate the average pre-rating of opponents for each player, I needed to add in the information about their opponents. To do this, I extracted the information for the results of each round from the raw data. I then made a seven column matrix from that data so I would have a data frame of each player's results for each of the seven rounds.
+
+```{r rounds-info}
+# each round has either W, L, D with a number, or H, U, X
+rounds <- unlist(str_extract_all(unlist((str_extract_all(str_remove(raw, '^\\s+[A-Z].+'), '\\|[WLBDXUH]\\s+(\\d+)?'))), '[WLBDXUH]\\s+(\\d+)?'))
+
+# create a seven column matrix from rounds to have a data frame of the results of each round for each player
+rounds <- matrix(rounds, byrow=T, ncol=7)
+```
+
+I then created a new data frame combining the `chess_stats` table with the `rounds` matrix. I used `pivot_longer` to expand the data frame so I could filter out rows for games that a player did not play. I also created a column just for each opponent's player ID.
+
+```{r}
+# combine the stats with the results of each round and pivot_longer
+full_stats <- chess_stats %>%
+  cbind(rounds) %>%
+  pivot_longer(cols = c("1", "2", "3", "4", "5", "6", "7"),
+               names_to = "round",
+               values_to = "results")
+
+# filtering out rounds a player did not play
+full_stats <- full_stats %>%
+  filter(str_detect(full_stats$results, '\\w+\\s+\\d+')) # only keep rows where the round has an opponent listed
+
+# add a column for opponent player_id from each round
+full_stats <- full_stats %>%
+  mutate("opp_player_id" = as.integer(str_extract(results, "\\d+")))
+```
+
+I created a separate data frame of each player's ID number and their pre-rating and I used `inner_join` to add the pre-rating for each opponent for each round. I then used `summarize` to calculate the average pre-rating of opponents for each player and I joined that to the initial data frame `chess_stats`.
+
+```{r}
+pre_ratings <- data.frame("opp_player_id" = c(1:64),
+                          "opp_pre_rating" = chess_stats$pre_rating)
+
+avg_opp_pre_ratings <- full_stats %>%
+  left_join(pre_ratings, on = "opp_player_id") %>%
+  group_by(player_name) %>%
+  summarize("avg_opp_pre_rating" = round(mean(opp_pre_rating), 0))
+
+chess_stats <- chess_stats %>%
+  left_join(avg_opp_pre_ratings, on = "player_name")
+
+knitr::kable(head(chess_stats))
+```
+
+### Exporting to CSV
+
+```{r}
+write.csv(chess_stats, 'C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA 607/chess_stats.csv', row.names = FALSE)
+```

@@ -1,0 +1,125 @@
+---
+title: "DATA 607 - Assignment 2"
+author: "Shoshana Farber"
+date: "February 5, 2023"
+output:
+  html_document: default
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(DBI)
+library(dbplyr)
+library(tidyverse)
+library(RPostgres)
+```
+
+## Connecting to PostgreSQL Database
+
+```{r}
+my_pass <- read_file("C:/Users/Shoshana/Documents/pass.txt")
+
+con <- dbConnect(
+  Postgres(), 
+  host = "localhost", 
+  port = 5432,
+  user = "postgres",
+  password = my_pass, 
+  dbname = "cuny-sps"
+)
+```
+
+## Loading the Databases
+
+```{r load-tables}
+movie_ratings <- dbGetQuery(con, "SELECT * FROM movie_ratings")
+raters <- dbGetQuery(con, "SELECT * FROM raters")
+movies <- dbGetQuery(con, "SELECT * FROM movies")
+
+# preview each table
+head(movie_ratings)
+head(raters)
+head(movies)
+
+# want a table of just the raters, movies, and their ratings 
+movie_ratings <- movie_ratings %>%
+  left_join(movies, on = "movieID") %>%
+  left_join(raters, on = "raterID") %>%
+  transmute(name, movie_title, rating)
+
+knitr::kable(head(movie_ratings))
+```
+
+## Exploration
+
+### What is the average rating for each movie?
+
+```{r avg-movie-ratings}
+avg_rating <- movie_ratings %>%
+  group_by(movie_title) %>% 
+  filter(rating != is.na(rating)) %>%
+  summarize(avg_rating = round(mean(rating), 2))
+
+avg_rating
+```
+
+### Which movie is highest rated?
+
+```{r highest-rated-movie}
+avg_rating %>%
+  arrange(-avg_rating)
+```
+
+Ticket to Paradise is the highest rated movie.
+
+### How many people watched the highest rated movie?
+
+```{r}
+movie_ratings %>%
+  filter(movie_title == "Ticket to Paradise", 
+         rating != is.na(rating))
+```
+
+So ticket to paradise is the highest rated, but only 2/8 people actually watched it.
+
+### Which movie did most people watch?
+
+```{r most-watched}
+watched <- movie_ratings %>%
+  filter(rating != is.na(rating)) %>%
+  mutate(watched = 1) 
+
+watched %>%
+  group_by(movie_title) %>%
+  summarize(num_watched = sum(watched)) %>%
+  arrange(-num_watched)
+```
+
+```{r graph-watches}
+watched %>% 
+  ggplot(aes(y = movie_title)) + 
+    geom_bar(fill = "plum") +
+    labs(title = "Total Watches per Movie")
+```
+
+Matilda the Musical and Top Gun Maverick were watched by the most people (7/8).
+
+### What is the average rating given by each person?
+
+```{r avg-person-rating}
+avg_rating_person <- movie_ratings %>% 
+  group_by(name) %>%
+  filter(rating != is.na(rating)) %>%
+  summarize(avg_rating = round(mean(rating), 2))
+
+avg_rating_person
+```
+
+## Explanation
+
+I connected to PostgreSQL server to access the `movie_ratings`, `movies`, and `raters` schemas directly from the database. `raters` has a primary key of **raterID**, and `movies` has a primary key of **movieID**. These are both foreign keys in `movie_ratings`. 
+
+To analyze the data here, I reassigned `movie_ratings` to be a table of just the names of the raters, the movie titles, and their respective ratings. If I had more data, I would analyze popularity based on age, as the `raters` table includes the ages of those who rated. Additionally, all these movies are recent releases and were released in the same year, but if I had many more movies from many more years I would want to group based on year to see most popular movies per year. 

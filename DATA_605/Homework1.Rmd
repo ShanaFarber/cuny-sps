@@ -1,0 +1,91 @@
+---
+title: "DATA 605 Homework 1"
+author: "Shoshana Farber"
+date: "January 29, 2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#install.packages("gifski")
+library(gifski)
+```
+
+### Example - Building H
+
+```{r}
+x=c(rep(0,500),seq(0,1,length.out=1000), rep(1,500))
+y=c(seq(-1,1,length.out=500),rep(0,1000), seq(-1,1,length.out=500))
+z=rbind(x,y)
+plot(y~x, xlim=c(-3,3), ylim=c(-3,3))
+```
+
+### Building my initials using plots in R
+
+I modified the code for building an H in order to build my initials. 
+
+```{r plot-both}
+x <- c(rep(-2,500), seq(-2,-1,length.out=1000), rep(-1,500), seq(-2,-1,length.out=1000), seq(-2,-1,length.out=1000), seq(0,1,length.out=1000), rep(0, 500), seq(0,1,length.out=1000))
+y <- c(seq(0,1,length.out=500), rep(0,1000), seq(-1,0, length.out=500), rep(1,1000), rep(-1,1000), rep(0,1000), seq(-1,1,length.out=500), rep(1,1000))
+sf <- rbind(x,y)
+plot(y~x, xlim=c(-3,2), ylim=c(-3,3))
+```
+
+### Write R code that will left multiply (%>%) a square matrix (x) against each of the vectors of points (y). Initially, that square matrix will be the Identity matrix. 
+
+```{r}
+leftMultiply <- function (x, y){
+  x %*% y
+}
+```
+
+### Use a loop that changes the transformation matrix incrementally to demonstrate 1) shear, 2) scaling, 3)  rotation , and 4) projection in animated fashion.
+
+#### Shear
+
+A shearing transformation causes the object to slant. For matrix [a,b,c,d], changing b or c leads to a shear transformation. Here I changed c to shear in the x direction. 
+
+```{r animation.hook="gifski"}
+for (i in seq(0,2,length.out=10)) {
+  shear <- leftMultiply(matrix(c(1,0,i,1),byrow=T,nrow=2), sf)
+  plot(shear[2,]~shear[1,], xlim=c(-3,2), ylim=c(-5,3))
+}
+```
+
+#### Scaling
+
+Scaling makes the object bigger or smaller. Here I scaled by the same value along the x and y axes.  
+
+```{r animation.hook="gifski"}
+for (i in seq(.5,1.5,length.out=10)) {
+  scale <- leftMultiply(matrix(c(i,0,0,i),byrow=T,nrow=2), sf)
+  plot(scale[2,]~scale[1,], xlim=c(-3,2), ylim=c(-3,3))
+}
+```
+
+#### Rotation
+
+Rotation causes the object to rotate around a point. Here, my initials rotate around the z-axis. 
+
+```{r animation.hook="gifski"}
+for (i in seq(0,2*pi,length.out=10)) {
+  rotate <- leftMultiply(matrix(c(cos(i),sin(i),-sin(i),cos(i)),byrow=T,nrow=2), sf)
+  plot(rotate[2,]~rotate[1,], xlim=c(-3,2), ylim=c(-3,3))
+}
+```
+
+#### Projection
+
+Projection flattens the image.
+
+A rotation around the x-axis will flatten the image.
+
+```{r animation.hook="gifski"}
+project_sf <- rbind(sf, rep(0, ncol(sf)))
+
+for (i in seq(0,2*pi,length.out=5)) {
+  project <- leftMultiply(matrix(c(1,0,0,0,cos(i),sin(i),0,-sin(i),cos(i)),byrow=T,nrow=3), project_sf)
+  plot(project[2,]~project[1,], xlim=c(-3,2), ylim=c(-3,3))
+}
+```
