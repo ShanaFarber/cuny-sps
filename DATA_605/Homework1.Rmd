@@ -32,7 +32,7 @@ sf <- rbind(x,y)
 plot(y~x, xlim=c(-3,2), ylim=c(-3,3))
 ```
 
-### Write R code that will left multiply (%>%) a square matrix (x) against each of the vectors of points (y). Initially, that square matrix will be the Identity matrix. 
+#### Write R code that will left multiply (%>%) a square matrix (x) against each of the vectors of points (y). Initially, that square matrix will be the Identity matrix. 
 
 ```{r}
 leftMultiply <- function (x, y){
@@ -40,9 +40,9 @@ leftMultiply <- function (x, y){
 }
 ```
 
-### Use a loop that changes the transformation matrix incrementally to demonstrate 1) shear, 2) scaling, 3)  rotation , and 4) projection in animated fashion.
+#### Use a loop that changes the transformation matrix incrementally to demonstrate 1) shear, 2) scaling, 3)  rotation , and 4) projection in animated fashion.
 
-#### Shear
+### Shear
 
 A shearing transformation causes the object to slant. For matrix [a,b,c,d], changing b or c leads to a shear transformation. Here I changed c to shear in the x direction. 
 
@@ -53,7 +53,7 @@ for (i in seq(0,2,length.out=10)) {
 }
 ```
 
-#### Scaling
+### Scaling
 
 Scaling makes the object bigger or smaller. Here I scaled by the same value along the x and y axes.  
 
@@ -64,7 +64,7 @@ for (i in seq(.5,1.5,length.out=10)) {
 }
 ```
 
-#### Rotation
+### Rotation
 
 Rotation causes the object to rotate around a point. Here, my initials rotate around the z-axis. 
 
@@ -75,7 +75,7 @@ for (i in seq(0,2*pi,length.out=10)) {
 }
 ```
 
-#### Projection
+### Projection
 
 Projection flattens the image.
 

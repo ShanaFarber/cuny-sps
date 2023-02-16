@@ -1,0 +1,11 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/1003890/d3fb3a01f8344cf1bb6a934f333b4788
+bundleId: https://api.rpubs.com/api/v1/document/1003890/d3fb3a01f8344cf1bb6a934f333b4788
+url: http://rpubs.com/ShanaFarber/1003890
+when: 1676521468.3225
+lastSyncTime: 1676521468.32251
