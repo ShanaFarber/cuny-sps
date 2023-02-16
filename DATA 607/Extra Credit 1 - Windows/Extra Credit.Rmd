@@ -3,8 +3,8 @@ title: "DATA 607 - EC 1"
 author: "Shoshana Farber"
 date: "February 14, 2023"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -75,3 +75,16 @@ bitcoins_open_close %>%
 ```
 
 You can see the decrease in the price of Bitcoin over the 2022 year. 
+
+I also plotted the `six_day_window` against the daily closing price:
+
+```{r plot-close-ytd-avg}
+bitcoins_open_close %>%
+  pivot_longer(cols = c("close", "close_six_day_window"),
+               names_to = "calculation",
+               values_to = "price") %>%
+  ggplot(aes(x = date, y = price, color = calculation)) +
+  geom_line() +
+  scale_y_continuous(labels = dollar_format())
+```
+
