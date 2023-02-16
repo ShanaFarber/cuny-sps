@@ -130,5 +130,5 @@ knitr::kable(head(chess_stats))
 ### Exporting to CSV
 
 ```{r eval=FALSE}
-write.csv(chess_stats, 'C:/Temp', row.names = FALSE)
+write.csv(chess_stats, 'C:/Temp', row.names = FALSE) # use 'C:/Temp' or replace with desired file path
 ```
