@@ -2,7 +2,7 @@
 title: "DATA 607 - Assignment 3"
 author: "Shoshana Farber"
 date: "February 12, 2023"
-output: 
+output:
   html_document:
     toc: true
     toc_float: true
@@ -61,7 +61,9 @@ Initially I created the following function which replaces anything between the w
 formatString <- function(string) {
   temp <- gsub('(\\[\\d+\\])?(\\s)?\\"', "", gsub('\"(\\s+)?(\\[\\d+\\])?(\\s+)?"', ",", string))
   
-  unlist(str_split(temp, ","))
+  temp <- unlist(str_split(temp, ","))
+  
+  dput(temp)
 }
 
 formatString(full_string)
@@ -71,7 +73,9 @@ I also created an alternative function which instead extracts all the desired wo
 
 ```{r}
 formatString <- function (string) {
-  unlist(str_extract_all(string, '[a-zA-Z]+\\s?[a-zA_Z]+'))
+  temp <- unlist(str_extract_all(string, '[a-zA-Z]+\\s?[a-zA_Z]+'))
+  
+  dput(temp)
 }
 
 formatString(full_string)
@@ -102,6 +106,20 @@ Describe, in words, what these expressions will match:
 - `"(.)(.)(.).*\\3\\2\\1"`
 
       This will match any string that contains at least six characters where the last three characters are the same as the first three characters in reverse order (ex: 'abcanythingcba'). Each (.) captures a different character, .* matches any number of characters, and \3, \2, \1 match the first three characters in reverse order. 
+      
+```{r test-regex-3}
+test_string_3 <- c("coool", "banana", "cabana", "pepper", "boooo", "abcanythingcba", "deffed")
+
+str_view(test_string_3, '(.)\\1\\1')
+
+str_view(test_string_3, '(.)(.)\\2\\1')
+
+str_view(test_string_3, '(..)\\1')
+
+str_view(test_string_3, '(.).\\1.\\1')
+
+str_view(test_string_3, '(.)(.)(.).*\\3\\2\\1')
+```
 
 ### Problem 4
 
@@ -118,3 +136,13 @@ Construct regular expressions to match words that:
 - Contain one letter repeated in at least three places (e.g. "eleven" contains three "e"s).
 
   `"(.).*\\1.*\\1"`
+  
+```{r test-regex-4}
+test_string_4 <- c("stats", "church", "blurb", "eleven", "strawberry", "pepper")
+
+str_view(test_string_4, '^(.).*\\1$')
+
+str_view(test_string_4, '(..).*\\1')
+
+str_view(test_string_4, '(.).*\\1.*\\1')
+```
