@@ -1,0 +1,310 @@
+---
+title: "Lab 2 - Introduction to Data"
+author: "Shoshana Farber"
+output:
+  pdf_document: default
+  html_document:
+    toc: true
+    toc_float: true
+    css: ./lab.css
+    highlight: pygments
+    theme: cerulean
+---
+
+```{r global-options, include=FALSE}
+knitr::opts_chunk$set(eval = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(openintro)
+```
+
+Some define statistics as the field that focuses on turning information into knowledge. The first step in that process is to summarize and describe the raw information -- the data. In this lab we explore flights, specifically a random sample of domestic flights that departed from the three major New York City airports in 2013. The data can be found in the companion package for OpenIntro labs, **openintro**.
+
+### The Data
+
+The [Bureau of Transportation Statistics](http://www.rita.dot.gov/bts/about/) (BTS) is a statistical agency that is a part of the Research and Innovative Technology Administration (RITA). As its name implies, BTS collects and makes transportation data available, such as the flights data we will be working with in this lab.
+
+First, we'll view the `nycflights` data frame:
+
+```{r load-data}
+data(nycflights)
+```
+
+View the variable names:
+
+```{r names}
+names(nycflights)
+```
+
+You can use `glimpse` to take a quick peek at your data to understand its contents better.
+
+```{r glimpse}
+glimpse(nycflights)
+```
+
+One of the variables refers to the carrier (i.e. airline) of the flight, which is coded according to the following system.
+
+- `carrier`: Two letter carrier abbreviation.
+    + `9E`:           Endeavor Air Inc.
+    + `AA`:      American Airlines Inc.
+    + `AS`:        Alaska Airlines Inc.
+    + `B6`:             JetBlue Airways
+    + `DL`:        Delta Air Lines Inc.
+    + `EV`:    ExpressJet Airlines Inc.
+    + `F9`:      Frontier Airlines Inc.
+    + `FL`: AirTran Airways Corporation
+    + `HA`:      Hawaiian Airlines Inc.
+    + `MQ`:                   Envoy Air
+    + `OO`:       SkyWest Airlines Inc.
+    + `UA`:       United Air Lines Inc.
+    + `US`:             US Airways Inc.
+    + `VX`:              Virgin America
+    + `WN`:      Southwest Airlines Co.
+    + `YV`:          Mesa Airlines Inc.
+    
+Some questions we might want to answer with these data:
+
+- How delayed were flights that were headed to Los Angeles?
+- How do departure delays vary by month?
+- Which of the three major NYC airports has the best on time percentage for departing flights?
+
+## Analysis
+
+### Exercise 1 - Departure Delays
+
+Let's start by examining the distribution of departure delays of all flights with a histogram.
+
+This function says to plot the `dep_delay` variable from the `nycflights` data frame on the x-axis:
+
+```{r hist-dep-delay, fig.show='hold', out.width='50%'}
+ggplot(data = nycflights, aes(x = dep_delay)) +
+  geom_histogram()
+
+ggplot(data = nycflights, aes(x = dep_delay)) +
+  geom_histogram(binwidth = 15)
+
+ggplot(data = nycflights, aes(x = dep_delay)) +
+  geom_histogram(binwidth = 150)
+```
+
+Histograms are generally a very good way to see the shape of a single distribution of numerical data, but that shape can change depending on how the data is split between the different bins.
+
+**Look carefully at these three histograms. How do they compare? Are features revealed in one that are obscured in another?**
+
+These three histograms differ in bin width. The larger the bin width, the more observations are contained within each bin. The first histogram has a default bin width of 30. When we decrease the bin width to 15 in the second histogram, we see that the first histogram does not accurately reflect the data and that some observations are hidden in the largest peak, specifically the observations to the left of the largest bin. These would account for flights that were not delayed. When the bin width was larger, we could not differentiate between these flights and those with slight delays. The last histogram has the largest bin width of 150. This is the most obscure as there are only three bins which account for all 32,735 observations. 
+
+If you want to visualize only on delays of flights headed to Los Angeles, you need to first `filter` the data for flights with that destination (`dest == "LAX"`) and then make a histogram of the departure delays of only those flights.
+
+```{r lax-flights-hist}
+lax_flights <- nycflights %>%
+  filter(dest == "LAX")
+ggplot(data = lax_flights, aes(x = dep_delay)) +
+  geom_histogram()
+```
+
+You can also obtain numerical summaries for these flights:
+
+```{r lax-flights-summ}
+lax_flights %>%
+  summarise(mean_dd   = mean(dep_delay), 
+            median_dd = median(dep_delay), 
+            n         = n())
+```
+
+### Exercise 2
+
+**Create a new data frame that includes flights headed to SFO in February, and save this data frame as `sfo_feb_flights`. How many flights meet these criteria?**
+
+```{r sfo-feb-flights}
+sfo_feb_flights <- nycflights %>%
+  filter(dest == "SFO", month == 2)
+
+count(sfo_feb_flights)
+```
+
+68 flights meet this criteria (there are were 68 flights to San Francisco in February).
+    
+### Exercise 3
+
+**Describe the distribution of the *arrival* delays of these flights using a histogram and appropriate summary statistics.** 
+
+```{r hist-sfo-arr-delay}
+sfo_feb_flights %>%
+  ggplot(aes(x = arr_delay)) +
+    geom_histogram()
+```
+
+The distribution is unimodal and right skewed.
+
+```{r}
+sfo_feb_flights %>%
+  summarize(median_ad = median(arr_delay),
+            iqr_ad = IQR(arr_delay),
+            n = n())
+```
+
+We can modify the above command using the `group_by` function to get the same summary stats for each origin airport:
+
+```{r summary-custom-list-origin}
+sfo_feb_flights %>%
+  group_by(origin) %>%
+  summarise(median_dd = median(arr_delay), iqr_dd = IQR(arr_delay), n_flights = n())
+```
+
+### Exercise 4
+
+**Calculate the median and interquartile range for `arr_delay`s of flights in the `sfo_feb_flights` data frame, grouped by carrier. Which carrier has the most variable arrival delays?**
+
+```{r}
+sfo_feb_flights %>%
+  group_by(carrier) %>%
+  summarize(median_ad = median(arr_delay),
+            iqr_ad = IQR(arr_delay),
+            n = n()) %>%
+  arrange(desc(iqr_ad))
+```
+
+Delta (DL) and United Airlines (UA) have the largest IQRs so they have the most variable arrival delays. 
+
+```{r}
+sfo_feb_flights %>%
+  filter(carrier == "DL" | carrier == "UA") %>%
+  group_by(carrier) %>%
+  summarize(var_ad = var(arr_delay)) %>%
+  arrange(desc(var_ad))
+```
+
+By using `var()` we can see that United actually has the highest variance and therefore the most variable arrival delays.  
+
+### Departure Delays by Month
+
+**Which month would you expect to have the highest average delay departing from an NYC airport?**
+
+```{r mean-dep-delay-months}
+nycflights %>%
+  group_by(month) %>%
+  summarise(mean_dd = mean(dep_delay)) %>%
+  arrange(desc(mean_dd))
+```
+
+Based on the means displayed, you would expect July (month 7) to have the highest average delay.
+
+### Exercise 5
+
+**Suppose you really dislike departure delays and you want to schedule your travel in a month that minimizes your potential departure delay leaving NYC. One option is to choose the month with the lowest mean departure delay. Another option is to choose the month with the lowest median departure delay. What are the pros and cons of these two choices?**
+
+Choosing the month with the lowest mean departure delay would provide a good estimate of the average delay you would expect for your flight. However, in doing this you are also factoring in outliers, such as times in the month where there may have been a few flights with long delays even though most were on time. Therefore, this may not accurately reflect the delay experienced in that month and you may dismiss a month that does not usually have much delay. 
+
+The median is not affected by these outliers, so it may more accurately reflect the typical delay time. However, the median does not provide an estimate of delay time, so it would not tell you your expected delay time as accurately as the mean. Also, the median does not account for variability and if the distribution is not symmetric, it may not actually be a good estimate for the delay time of most flights in that month. 
+
+```{r}
+nycflights %>%
+  group_by(month) %>%
+  summarize(mean_dd = mean(dep_delay),
+            median_dd = median(dep_delay),
+            iqr_dd = IQR(dep_delay),
+            n = n())
+```
+
+From here we see that there is not much difference in the medians of departure delays in each month. Additionally, some of the months with low medians (-2) seem to have a lot of variability and the mean delay times are quite high. We can also see that the lowest median delay (-3) does correspond with two of the lower mean delays, but there is a minute difference between the two. Therefore, it may be better to choose based off mean to choose the lowest average delay time and have an average estimate of delay. 
+
+### On Time Departure Rate for NYC Airports
+
+Suppose you will be flying out of NYC and want to know which of the three major NYC airports has the best on time departure rate of departing flights. Also supposed that for you, a flight that is delayed for less than 5 minutes is basically "on time." You consider any flight delayed for 5 minutes of more to be "delayed."
+
+Let's start with classifying each flight as "on time" or "delayed" by creating a new variable with the `mutate` function:
+
+```{r dep-type}
+nycflights <- nycflights %>%
+  mutate(dep_type = ifelse(dep_delay < 5, "on time", "delayed"))
+```
+
+We can handle all of the remaining steps in one code chunk:
+
+```{r ot-dep-rate}
+nycflights %>%
+  group_by(origin) %>%
+  summarise(ot_dep_rate = sum(dep_type == "on time") / n()) %>%
+  arrange(desc(ot_dep_rate))
+```
+
+### Exercise 6
+
+**If you were selecting an airport simply based on on time departure percentage, which NYC airport would you choose to fly out of?**
+
+I would choose the airport with the highest on-time percentage, which is LaGuardia Airport (LGA). 
+
+You can also visualize the distribution of on on time departure rate across the three airports using a segmented bar plot:
+
+```{r viz-origin-dep-type}
+ggplot(data = nycflights, aes(x = origin, fill = dep_type)) +
+  geom_bar()
+```
+
+## More Practice
+
+### Excerise 7
+
+**Mutate the data frame so that it includes a new variable that contains the average speed, `avg_speed` traveled by the plane for each flight (in mph).**
+
+Average speed can be calculated as distance divided by number of hours of travel:
+
+```{r avg-speed}
+nycflights <- nycflights %>%
+  mutate(avg_speed = distance / (air_time/60))
+```
+
+### Exercise 8
+
+**Make a scatterplot of `avg_speed` vs. `distance`. Describe the relationship between average speed and distance.**
+
+```{r avg-speed-vs-distance, fig.show="asis", out.width="65%", fig.align='center'}
+nycflights %>% 
+  ggplot(aes(x = distance, y = avg_speed)) +
+    geom_point()
+```
+
+Average speed seems to increase a bit with distance and then plateau at a little past 1,000 miles. 
+
+### Exercise 9
+
+**Replicate the following plot. Once you replicate the plot, determine (roughly) what the cutoff point is for departure delays where you can still expect to get to your destination on time.**
+
+```{r plot-to-replicate, echo=FALSE, fig.show="asis", out.width="65%", fig.align='center'}
+dl_aa_ua <- nycflights %>%
+  filter(carrier == "AA" | carrier == "DL" | carrier == "UA")
+
+ggplot(data = dl_aa_ua, aes(x = dep_delay, y = arr_delay, color = carrier)) +
+  geom_point()
+```
+
+I replicated the plot and then filtered only for points where there was a delay in departure (`dep_delay` >= 0) but no arrival delay (`arr_delay` <= 0):
+
+```{r replicated-plot, fig.show='hold', out.width='50%'}
+dl_aa_ua <- nycflights %>%
+  filter(carrier == "AA" | carrier == "DL" | carrier == "UA")
+  
+dl_aa_ua %>%
+  ggplot(aes(x = dep_delay,
+             y = arr_delay,
+             color = carrier)) +
+    geom_point() +
+    labs(title = "Replicated Plot")
+
+dl_aa_ua %>%
+  filter(arr_delay <= 0, dep_delay >= 0) %>%
+  ggplot(aes(x = dep_delay, y = arr_delay, color = carrier)) +
+    geom_point() +
+    labs(title = "Filtered Plot")
+```
+
+I noticed the right-most point was sometime after 60 minutes so I filtered to see how many minutes the flight was delayed:
+
+```{r}
+dl_aa_ua %>%
+  filter(arr_delay <= 0, dep_delay > 60) %>%
+  transmute(latest_delay = dep_delay)
+```
+
+The latest departure delay that still got to its destination on time was 63 minutes. However, the points are more clustered below 50 minutes so the latest departure delay that you can still expect to arrive on time would be somewhere between 30-50 minutes. 
+
+
