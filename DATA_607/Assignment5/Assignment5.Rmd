@@ -1,0 +1,155 @@
+---
+title: "DATA 607 - Assignment 5"
+author: "Shoshana Farber"
+date: "February 26, 2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(snakecase) 
+```
+
+## Loading the Data
+
+I loaded in the data, making sure to include `na.strings` so that any empty character cell would be filled with NA.
+
+```{r}
+untidy_flights <- read.csv(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/Assignment5/flights.csv"), na.strings=c(""))
+
+untidy_flights
+```
+
+## Cleaning
+
+I made a `tidy_flights` data frame from `untidy_flights` and renamed the first two columns to be more descriptive.
+
+```{r make-tidy-flights}
+tidy_flights <- untidy_flights
+
+tidy_flights <- tidy_flights %>% 
+  rename("airline" = X,
+         "arrival_status" = X.1)
+```
+
+I removed the empty row from the data frame and used `fill()` to populate the empty airline cells with their respective airline. 
+
+```{r}
+# remove empty row
+tidy_flights <- tidy_flights[!apply(is.na(tidy_flights), 1, all),]
+
+# populate empty airlines
+tidy_flights <- tidy_flights %>% 
+  fill(airline, .direction = "down")
+
+tidy_flights
+```
+
+I found the code for removing the empty row [here](https://stackoverflow.com/questions/6437164/removing-empty-rows-of-a-data-file-in-r). 
+
+Documentation on `fill()` function found [here](https://www.rdocumentation.org/packages/tidyr/versions/1.3.0/topics/fill). 
+
+I then changed from wide to long format:
+
+```{r}
+# make long format
+tidy_flights <- tidy_flights %>%
+  pivot_longer(cols = c("Los.Angeles":"Seattle"),
+               names_to = "city",
+               values_to = "num_flights",
+               values_transform = list(num_flights = as.character))
+
+# remove any comma from num_flights and change to integer
+tidy_flights$num_flights <- str_remove(tidy_flights$num_flights, ",")
+tidy_flights$num_flights <- as.integer(tidy_flights$num_flights)
+
+# remove . from city names
+tidy_flights$city <- str_replace(tidy_flights$city, "\\.", " ")
+
+# change arrival_status values to snake case
+tidy_flights$arrival_status <- to_snake_case(tidy_flights$arrival_status)
+
+tidy_flights
+```
+
+I then split based on "on time" vs. "delayed":
+
+```{r}
+tidy_flights <- tidy_flights %>%
+  pivot_wider(names_from = "arrival_status",
+              values_from = "num_flights")
+```
+
+## Comparing Arrival Delays
+
+```{r}
+tidy_flights <- tidy_flights %>%
+  arrange(desc(delayed))
+
+knitr::kable(tidy_flights)
+```
+
+```{r plot-delayed-flights}
+tidy_flights %>%
+  ggplot(aes(x = city, y = delayed, fill = airline)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    geom_text(aes(label = delayed), position = position_dodge(.9))
+```
+
+AM West flights to Pheonix had the most arrival delays (415 flights) while Alaska flights to Pheonix had the least arrival delays (12 flights). 
+
+What was the proportion of delayed flights for each airline?
+
+```{r prop-per-airline}
+tidy_flights <- tidy_flights %>%
+  mutate("total" = on_time + delayed)
+
+delayed_per_airline <- tidy_flights %>% 
+  group_by(airline) %>%
+  summarize("delayed" = sum(delayed), "total" = sum(total)) %>%
+  mutate("prop_delayed" = delayed/total) 
+
+knitr::kable(delayed_per_airline)
+```
+
+About 13% of Alaska airline flights were delayed while about 11% of AM West flights were delayed. 
+
+What was the proportion of delayed flights for each city?
+
+```{r prop-per-city}
+delayed_per_city <- tidy_flights %>%
+  group_by(city) %>%
+  summarize("delayed" = sum(delayed), "total" = sum(total)) %>%
+  mutate("prop_delayed" = delayed/total) %>%
+  arrange(desc(prop_delayed))
+
+knitr::kable(delayed_per_city)
+```
+
+Flights to San Francisco had the most delays overall (22%). 
+
+What was the proportion of delayed flights for each city according to each airline?
+
+```{r prop-per-city-airline}
+delayed_per_city_airline <- tidy_flights %>%
+  mutate("prop_delayed" = delayed / total)
+
+knitr::kable(delayed_per_city_airline)
+
+delayed_per_city_airline %>%
+  ggplot(aes(x = city, y = prop_delayed, color = airline)) +
+    geom_point() +
+    scale_y_continuous(labels = scales::percent)
+```
+
+We can see that AM West has a greater percentage of delayed flights for each city. AM West flights to San Francisco had the largest percentage of delayed flights (29%), while Alaska flights to Phoenix had the least (5%).
+
+In all cases, it would seem that if I wanted to decrease my likelihood of being delayed to any city, I would want to take an Alaska airline flight. 
+
+
+
+
