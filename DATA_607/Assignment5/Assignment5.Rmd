@@ -136,7 +136,8 @@ What was the proportion of delayed flights for each city according to each airli
 
 ```{r prop-per-city-airline}
 delayed_per_city_airline <- tidy_flights %>%
-  mutate("prop_delayed" = delayed / total)
+  mutate("prop_delayed" = delayed / total) %>%
+  arrange(city, airline)
 
 knitr::kable(delayed_per_city_airline)
 
@@ -148,7 +149,70 @@ delayed_per_city_airline %>%
 
 We can see that AM West has a greater percentage of delayed flights for each city. AM West flights to San Francisco had the largest percentage of delayed flights (29%), while Alaska flights to Phoenix had the least (5%).
 
-In all cases, it would seem that if I wanted to decrease my likelihood of being delayed to any city, I would want to take an Alaska airline flight. 
+When comparing this to the overall percentage of delayed flights for each airline, it appears that Alaska Airlines outperformed AM West in every city, yet under-performed overall. This is because AM West has a greater overall number of flights relative to Alaska Airlines, and the calculation for delay percentage did not include a weighting of the delay percentage for each city relative to the percentage that each city's flights make of the total flights for each airline. 
+
+Let us now perform the weighted calculations:
+
+```{r}
+# data frame for each airline's total flights
+airline_totals <- tidy_flights %>%
+  group_by(airline) %>%
+  summarize("airline_total_flights" = sum(total))
+
+# join to table of flight information
+weighted_flights <- tidy_flights %>%
+  left_join(airline_totals, on = "airline")
+
+# calculate the percentage of flights to each city out of total airline flights
+# calculate percentage of delayed flights out of total flights to city
+weighted_flights <- weighted_flights %>%
+  mutate("prop_of_flights" = total / airline_total_flights,
+         "city_prop_delayed" = delayed / total)
+
+# multiply percentages to get true percentage delay per airline to each city
+weighted_flights <- weighted_flights %>%
+  mutate("adj_prop_delayed" = prop_of_flights * city_prop_delayed)
+
+# check that percentages still valid
+weighted_flights %>% 
+  group_by(airline) %>%
+  summarize("prop_delayed" = sum(adj_prop_delayed))
+```
+
+The percentage of overall delays remains the same as above. We can now visualize the adjusted delay percentage of each airline's flights to each city:
+
+```{r adj-delay-prop}
+weighted_flights %>%
+  ggplot(aes(x = city, y = adj_prop_delayed, color = airline)) +
+    geom_point() +
+    scale_y_continuous(labels = scales::percent)
+```
+
+```{r}
+la_diff <- weighted_flights %>% 
+  filter(city == "Los Angeles") %>%
+  summarize(la_diff = diff(adj_prop_delayed))
+
+la_diff <- la_diff$la_diff[1]
+```
+
+We can now compare the true proportion of delayed flights for each city. AM West outperforms Alaska Airlines in flights to San Francisco and Seattle, while Alaska outperforms AM West in flights to Phoenix and San Diego. The percentage of delayed flights to Los Angeles is similar between airlines, with AM West having a tiny edge on Alaska Airlines (a difference of about `r round(la_diff*100, 3)`%)
+
+We can compare the two plots below to see how the percentage changes when the proportion is weighted correctly:
+
+```{r fig.show='hold', out.width='50%'}
+delayed_per_city_airline %>%
+  ggplot(aes(x = city, y = prop_delayed, color = airline)) +
+    geom_point() +
+    scale_y_continuous(labels = scales::percent) +
+    labs(title = "Delay Percentage of Each Airline Per City")
+
+weighted_flights %>%
+  ggplot(aes(x = city, y = adj_prop_delayed, color = airline)) +
+    geom_point() +
+    scale_y_continuous(labels = scales::percent) +
+    labs(title = "Adjusted Delay Percentage of Each Airline Per City")
+```
 
 
 
