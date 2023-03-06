@@ -1,0 +1,463 @@
+---
+title: "DATA 607 - Project 2"
+author: "Shoshana Farber"
+date: "March 5, 2023"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(snakecase)
+library(lubridate)
+library(DT)
+```
+
+## MTA Ridership Data Frame
+
+This data frame was provided by John Cruz and it was taken from the [DATA.NY.GOV website](https://data.ny.gov/). It shows the daily number of MTA riders on buses, subways, trains, bridges, and tunnels beginning in 2020. A full description can be found [here](https://data.ny.gov/Transportation/MTA-Daily-Ridership-Data-Beginning-2020/vxuj-8kew). 
+
+John's suggested analysis of the data would be to show how commuter travel varies based on the day of the week and to compare the travel between each line of transportation. 
+
+### Loading the Data 
+
+```{r}
+mta_riderships <- read.csv(url('https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/Project2/MTA_Daily_Ridership_Data_Beginning_2020.csv'))
+```
+
+### Cleaning Up the Data
+
+I first noticed that the `date` column needed to be changed to a date character type.
+
+```{r}
+# cast Date column as date data type
+mta_riderships$Date <- as.Date(mta_riderships$Date, '%m/%d/%Y')
+```
+
+I then added a column for day of the week using `wday()` and I changed the table to long format so I could plot the analysis. 
+
+```{r}
+# adding column for day of week
+mta_riderships <- mta_riderships %>%
+  mutate("dow_id" = wday(Date))
+
+# creating a data frame of days of week with number and joining to data frame
+days_of_week <- data.frame("dow_id" = c(1:7),
+                           "day_of_week" = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+
+# joins days of week with mta table
+mta_riderships <- mta_riderships %>%
+  left_join(days_of_week, by = "dow_id") 
+```
+
+I created two separate data frames, one for the total estimated riders, and one for the percent compared to pre-Covid.
+
+```{r}
+########### total estimated riders #################
+mta_estimated_riders <- mta_riderships %>%
+  transmute("date" = Date, 
+            day_of_week, 
+            Subways..Total.Estimated.Ridership, 
+            Buses..Total.Estimated.Ridership, 
+            LIRR..Total.Estimated.Ridership, 
+            Metro.North..Total.Estimated.Ridership, 
+            Access.A.Ride..Total.Scheduled.Trips, 
+            Bridges.and.Tunnels..Total.Traffic) %>%
+  pivot_longer(cols = c(Subways..Total.Estimated.Ridership:Bridges.and.Tunnels..Total.Traffic),
+               names_to = "mode_of_transport",
+               values_to = "total_estimated_riders") %>%
+  mutate("id" = c(1:length(date)))
+
+# extract mode of transport
+mta_estimated_riders$mode_of_transport <- str_extract(mta_estimated_riders$mode_of_transport, "[A-Za-z]+(\\.[A-Za-z]+)?(\\.[A-Za-z]+)?\\.\\.")
+
+mta_estimated_riders$mode_of_transport <- str_remove(mta_estimated_riders$mode_of_transport, "\\.\\.")
+
+mta_estimated_riders$mode_of_transport <- str_replace_all(mta_estimated_riders$mode_of_transport, "\\.", " ")
+```
+
+```{r}
+########### percent compared to pre-covid ############
+percent_pre_covid <- mta_riderships %>%
+  transmute("date" = Date, 
+            day_of_week, 
+            Subways....of.Comparable.Pre.Pandemic.Day, 
+            Buses....of.Comparable.Pre.Pandemic.Day,
+            LIRR....of.2019.Monthly.Weekday.Saturday.Sunday.Average,
+            Metro.North....of.2019.Monthly.Weekday.Saturday.Sunday.Average,
+            Access.A.Ride....of.Comparable.Pre.Pandemic.Day,
+            Bridges.and.Tunnels....of.Comparable.Pre.Pandemic.Day) %>%
+  pivot_longer(cols = c(Subways....of.Comparable.Pre.Pandemic.Day:Bridges.and.Tunnels....of.Comparable.Pre.Pandemic.Day),
+               names_to = "mode_of_transport",
+               values_to = "percent_compared_to_pre_covid") %>%
+  mutate("id" = c(1:length(date)))
+
+# extract mode of transport
+percent_pre_covid$mode_of_transport <- str_extract(percent_pre_covid$mode_of_transport, "[A-Za-z]+(\\.[A-Za-z]+)?(\\.[A-Za-z]+)?\\.\\.")
+
+percent_pre_covid$mode_of_transport <- str_remove(percent_pre_covid$mode_of_transport, "\\.\\.")
+
+percent_pre_covid$mode_of_transport <- str_replace_all(percent_pre_covid$mode_of_transport, "\\.", " ")
+```
+
+I then joined the two tables:
+
+```{r}
+mta_daily_riderships <- mta_estimated_riders %>%
+  left_join(percent_pre_covid, by = "id") %>%
+  transmute("date" = date.x,   # don't want repeated columns
+            "day_of_week" = day_of_week.x, 
+            "mode_of_transport" = mode_of_transport.x, 
+            total_estimated_riders,
+            percent_compared_to_pre_covid)
+
+datatable(mta_daily_riderships, list(pageLength = 5))
+```
+
+### Analysis
+
+The suggested analysis was to compare commuter travel based on day of the week and based on mode of transportation.
+
+**I first chose to see how ridership compares based on mode of travel:**
+
+For this analysis, I did not need the percent pre-Covid information so I just used the `total_yearly_riders` data frame created above. 
+
+```{r}
+# total riders
+total_yearly_riders <- mta_daily_riderships %>%
+  filter(!is.na(total_estimated_riders)) %>%
+  group_by(mode_of_transport) %>%
+  summarize(yearly_estimated_riders = sum(total_estimated_riders))
+
+knitr::kable(total_yearly_riders, col.names = c("Mode of Transport", "Yearly Estimated Riders"), format.args = list(big.mark = ","))
+
+# total riders
+# percentage of each mode of transportation
+total_yearly_riders <- total_yearly_riders %>%
+  mutate("total_riders" = sum(yearly_estimated_riders), "prop" = yearly_estimated_riders/total_riders)
+
+total_yearly_riders %>%
+  ggplot(aes(x = mode_of_transport, y = prop)) +
+  geom_bar(stat = "identity", fill = "#00008B") +
+  scale_y_continuous(label = scales::percent) + 
+  labs(title = "Transport Mode Percentage of Total", 
+       x = "Mode of Transport",
+       y = "Percentage of Yearly Total") +
+  geom_text(aes(label = paste0(round(prop*100, 0),'%'), vjust = -0.5))
+```
+
+Here we can see the total number of riders who used each mode of transportation and the percentage of usage for each mode of transportation. Subways had the greatest number of total riders, with over 2 billion people making up 51% of all riders. Access A Ride had over 20 million riders, but this amount is so small in comparison to the others that it effectively makes up close to 0%. 
+
+```{r access-a-ride prop}
+access_a_ride_prop <- total_yearly_riders %>%
+  filter(mode_of_transport == "Access A Ride")
+
+paste0(round(access_a_ride_prop[['prop']]*100, 2), '%')
+```
+
+Access A Ride riders make up about 0.44% of the total estimated riders. 
+
+**I then wanted to track MTA ridership overtime based on day of the week:**
+
+In order to do this, I wanted to track the percentage of usage for each mode of transportation. I needed to add a value for the total riders per day. I used `pivot_wider()` to be able to add all of the columns into a `total` column. In order to do this, I used my `mta_estimated_riders` data frame from above. I needed to change the NA values to 0, so that the calculation would not mess up, and I had to remove the `id` column so that `pivot_wider()` would work. 
+
+```{r}
+mta_estimated_riders <- mta_estimated_riders %>%
+  mutate(total_estimated_riders = replace(total_estimated_riders, is.na(total_estimated_riders), 0),
+         mode_of_transport = to_snake_case(mode_of_transport)) %>%
+  select(-c(id)) %>%
+  pivot_wider(names_from = mode_of_transport, 
+              values_from = total_estimated_riders) %>%
+  mutate(total_riders = subways + buses + lirr + metro_north + access_a_ride + bridges_and_tunnels)
+
+mta_proportions <- mta_estimated_riders %>%
+  transmute(date,
+            day_of_week,
+            "prop_subways" = subways/total_riders,
+            "prop_buses" = buses/total_riders,
+            "prop_lirr" = lirr/total_riders,
+            "prop_access_a_ride" = access_a_ride/total_riders,
+            "prop_bridges_and_tunnels" = bridges_and_tunnels/total_riders)
+
+# make day_of_weeka factor so plots will be in order
+mta_proportions$day_of_week <- factor(mta_proportions$day_of_week, levels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+  
+mta_proportions %>%
+  pivot_longer(cols = c(prop_subways:prop_bridges_and_tunnels),
+               names_to = "transport_type",
+               values_to = "prop") %>%
+  ggplot(aes(x = date, y = prop, color = transport_type)) +
+    geom_smooth(se=FALSE) +
+    facet_wrap(~day_of_week) +
+    scale_y_continuous(label = scales::percent) +
+    labs(title = "Percentage of Ridership Per Day of Week", x = "Date", y = "Percentage") +
+    scale_color_discrete(name="Mode of Transport",
+                         breaks=c("prop_access_a_ride", "prop_bridges_and_tunnels", "prop_buses", "prop_lirr", "prop_subways"),
+                         labels=c("Access A Ride", "Bridges and Tunnels", "Buses", "LIRR", "Subways")) 
+```
+
+There seems to be a negative correlation between subways and buses. Beginning in 2020, subway ridership began to increase while bus ridership began to decrease. In 2021, there starts a drop in the amount of people traveling by bridges and tunnels. Subway ridership continued to increase. LIRR ridership also had a slight increase over the years. This could be due to people getting more comfortable with using public transport since the outbreak of the pandemic so maybe less people were using cars in the city and started taking trains and subways instead. 
+
+We can see that the Monday, Tuesday, Wednesday, and Thursday ridership graphs are very similar, as well as the Friday, Saturday, Sunday graphs. Overall ridership for subways was greater for Monday-Thursday than on Saturday and Sunday in 2020. This makes sense as most people during the height of the Covid pandemic would have been wary of taking public transport unless they had to. So more people working people would have been using the subways on weekdays. From 2020 and on, there is a steady increase in the amount of people using the subways on weekdays, probably as more people started returning to work. There is also a large increase in the amount of people taking the subways on Saturday and Sunday from 2020 to mid 2021, as more people got vaccinated and probably started to become more comfortable with the idea of using public transport. 
+
+## Country Mortality Estimates Data Frame
+
+I supplied this data set. The data comes from the [International Database (IDB)](https://www.census.gov/programs-surveys/international-programs/about/idb.html) of the United States Census Bureau Website, which has population estimates and projections for 227 countries until the year 2100. For the purpose of this project, I limited the data from 2010-2023 ([IDB Census Data](https://www.census.gov/data-tools/demo/idb/#/table?COUNTRY_YEAR=2023&COUNTRY_YR_ANIM=2023&menu=tableViz&quickReports=MORT&TABLE_RANGE=2010,2023&TABLE_YEARS=2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023&TABLE_USE_RANGE=Y&TABLE_USE_YEARS=N&TABLE_STEP=1)). This table is in a wide format with column titles splitting the data into age categories and column subtitles splitting each factor further into genders. 
+
+The analysis suggested for this data set was to compare mortality rates for males and females between countries. 
+
+### Loading the Data
+
+```{r}
+country_mortality <- read.csv(url('https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/Project2/country_mortality.csv'), header=F, na.strings=c(""))
+```
+
+Since this data frame had multiple column titles (column for each age group further split into genders), I chose to extract the information from each column into a descriptively named vector, ignoring the first 2 rows. I then created separate data frames for each age group and combined them. 
+
+```{r}
+# extracting the values from the rows
+row <- as.integer(country_mortality$V1[-c(1:2)])
+FIPS <- country_mortality$V2[-c(1:2)]
+GENC <- country_mortality$V3[-c(1:2)]
+country <- country_mortality$V4[-c(1:2)]
+year <- as.integer(country_mortality$V5[-c(1:2)])
+infant_mortality_both <- country_mortality$V6[-c(1:2)]
+infant_mortality_male <- country_mortality$V7[-c(1:2)]
+infant_mortality_female <- country_mortality$V8[-c(1:2)]
+child_mortality_both <- country_mortality$V9[-c(1:2)]
+child_mortality_male <- country_mortality$V10[-c(1:2)]
+child_mortality_female <- country_mortality$V11[-c(1:2)]
+under_five_both <- country_mortality$V12[-c(1:2)]
+under_five_male <- country_mortality$V13[-c(1:2)]
+under_five_female <- country_mortality$V14[-c(1:2)]
+life_expectancy_both <- country_mortality$V15[-c(1:2)]
+life_expectancy_male <- country_mortality$V16[-c(1:2)]
+life_expectancy_female <- country_mortality$V17[-c(1:2)]
+
+# creating the data frames 
+infant_mortality <- data.frame("row" = row,
+                               "GENC" = GENC,
+                               "country" = country,
+                               "year" = year,
+                               "both" = infant_mortality_both,
+                               "male" = infant_mortality_male,
+                               "female" = infant_mortality_female,
+                               "table_name" = "infant_mortality")
+
+child_mortality <- data.frame("row" = row,
+                              "GENC" = GENC,
+                              "country" = country,
+                              "year" = year,
+                              "both" = child_mortality_both,
+                              "male" = child_mortality_male,
+                              "female" = child_mortality_female,
+                              "table_name" = "child_mortality")
+
+under_five_mortality <- data.frame("row" = row,
+                                   "GENC" = GENC,
+                                   "country" = country,
+                                   "year" = year,
+                                   "both" = under_five_both,
+                                   "male" = under_five_male,
+                                   "female" = under_five_female,
+                                   "table_name" = "under_five_mortality")
+
+life_expectancy <- data.frame("row" = row,
+                              "GENC" = GENC,
+                              "country" = country,
+                              "year" = year,
+                              "both" = life_expectancy_both,
+                              "male" = life_expectancy_male,
+                              "female" = life_expectancy_female,
+                              "table_name" = "life_expectancy")
+
+  
+# joining the tables
+country_mortality <- infant_mortality %>%
+  rbind(child_mortality) %>%
+  rbind(under_five_mortality) %>%
+  rbind(life_expectancy) %>%
+  pivot_longer(cols = c(both:female),
+               names_to = "gender",
+               values_to = "mortality_rate") %>%
+  pivot_wider(names_from = table_name, 
+              values_from = mortality_rate)
+
+# cast rows a numeric
+country_mortality$infant_mortality <- as.numeric(country_mortality$infant_mortality)
+country_mortality$child_mortality <- as.numeric(country_mortality$child_mortality)
+country_mortality$under_five_mortality <- as.numeric(country_mortality$under_five_mortality)
+country_mortality$life_expectancy <- as.numeric(country_mortality$life_expectancy)
+```
+
+To make the data more manageable, I decided to just compare mortality rates for European countries for the year of 2023. To do this I found a [data set of countries with their continents](https://www.kaggle.com/datasets/statchaitya/country-to-continent) on Kaggle and joined this to the mortality table to just extract the rows where the continent is Europe. 
+
+```{r}
+# data frame of country codes and continents
+country_codes <- read.csv(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/Project2/countryContinent.csv")) %>%
+  transmute("GENC" = code_2,
+            continent)
+
+# just European countries
+european_countries <- country_codes %>%
+  filter(continent == "Europe")
+
+european_countries_mortality_2023 <- european_countries %>%
+  left_join(country_mortality) %>%
+  filter(year == 2023, gender != "both")
+
+# comparing male and female mortality rates for european countries for year of 2023
+# I just did under_five mortality
+european_countries_mortality_2023 %>%
+  ggplot(aes(x = under_five_mortality, y = country)) +
+  geom_col(aes(fill = gender)) +
+  facet_wrap(~gender) +
+  labs(title = "Under Five Mortality Rates for European Countries", x = "Mortality Rate", y = "Country") 
+
+```
+
+The country with the highest mortality rates for both males and females is Moldova. Albania has the second highest mortality rates. 
+
+It seems from the graph that the mortality rate is slightly higher for males than females in most countries. 
+
+Are there countries where male mortality is less than female mortality?
+
+```{r}
+european_countries_mortality_2023 %>%
+  transmute(country, gender, under_five_mortality) %>%
+  pivot_wider(names_from = gender,
+              values_from = under_five_mortality) %>%
+  filter(male < female)
+```
+
+The only countries where male mortality rates are less than female mortality rates are Croatia and Montenegro. 
+
+I wanted to also create a World Map to compare the life expectancy between countries. To do this, I used `map_data(world)` to get a data frame of the longitude and latitude coordinated so that I could make the map. I used `geom_polygon` to make the map. 
+
+As can be seen in the code below, I had to replace a lot of the values in the `world_map` data frame to match the way in which the countries are labelled in the `country_mortality` data set. To do this, I filtered the `country_mortality` data set to show the countries that did not appear in the `world_map` data. There are still a few missing countries, but I tried to at least add in some of the main countries that I knew I could match up. I also wanted to make sure to fill in the biggest gaps in the map. 
+
+```{r}
+# I had to manually replace a lot of values that were not written the same way 
+world_map <- map_data("world") %>%
+  mutate("country" = region,
+         country = replace(country, country == "USA", "United States"),
+         country = replace(country, country == "UK", "United Kingdom"),
+         country = replace(country, country == "Democratic Republic of the Congo", "Congo (Kinshasa)"),
+         country = replace(country, country == "Republic of Congo", "Congo (Brazzaville)"),
+         country = replace(country, country == "Bahamas", "Bahamas, The"),
+         country = replace(country, country == "North Korea", "Korea, North"),
+         country = replace(country, country == "South Korea", "Korea, South"))
+
+world_map %>% 
+  left_join(country_mortality, by = "country") %>%
+  filter(year == 2023, gender == "both") %>%
+  ggplot(aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = life_expectancy)) +
+  labs(title = "Life Expectancy Per Country", y = "Latitude", x = "Longitude", fill = "Life Expectancy") +
+  scale_fill_distiller(palette = "YlOrRd",
+                       direction = 1)
+```
+
+From the plot, we can see that the highest life expectancy is in Canada, Australia, Japan, and some parts of Europe, with life expectancy of greater than 80. The lowest life expectancy is in regions in Africa and Afghanistan. 
+
+### Top 10 Countries with the Highest Life Expectancy
+
+Since my map is missing some countries from the mortality data set, I chose to filter out the missing countries and just see which countries are showing up in dark red on the map. 
+
+```{r}
+above_80_expectancy <- country_mortality %>%
+  filter(year == 2023, 
+         gender == "both", 
+         life_expectancy > 80,
+         country %in% world_map$country) %>%
+  left_join(country_codes, by = "GENC") %>%
+  arrange(desc(life_expectancy)) %>%
+  transmute(country, continent, life_expectancy)
+
+# top 10 highest life expectancy
+knitr::kable(head(above_80_expectancy, 10), col.names = c("Country", "Continent", "Life Expectancy"))
+```
+
+Here we can see Israel and Singapore also have high life expectancy, although they were too small to see on the map.
+
+
+
+## Healthcare Employment and Wages Data Frame
+
+This data frame was supplied by Jian Quan Chen and it can be downloaded [here](https://ftp.cdc.gov/pub/Health_Statistics/NCHS/Publications/Health_US/hus20-21tables/hcempl.xlsx). The data come from the CDC website and it looks at employment numbers and mean salaries of healthcare workers in selected years from 2000 to 2020. 
+The analysis suggested was to see how employments rates increase or decrease with change in salary. 
+
+This data frame was supplied as an excel file. I chose to convert to CSV (which can be found in my GitHub), but the analysis can also be done using `read_excel` to load in the data. 
+
+### Loading the Data
+
+```{r}
+healthcare_employment_wages <- read.csv(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/Project2/healthcare_employment_wages.csv"), header = F, na.strings = c(""))
+```
+
+Looking into the data frame, I can see that there is a row for each occupation and a column for each year. To see how salary/employment changed overtime, I would need to change the years to rows. I can also see that "Employment" spans columns V2-V8 and "Mean hourly wage" spans V9-V15. The first 5 columns are unnecessary, as well as the last 3.  
+
+```{r}
+occupation <- healthcare_employment_wages$V1[c(6:49)]
+
+years <-  c(healthcare_employment_wages$V2[5],
+          healthcare_employment_wages$V3[5],
+          healthcare_employment_wages$V4[5],
+          healthcare_employment_wages$V5[5],
+          healthcare_employment_wages$V6[5],
+          healthcare_employment_wages$V7[5],
+          healthcare_employment_wages$V8[5])
+
+employment <- data.frame("occupation" = occupation,
+                         healthcare_employment_wages$V2[c(6:49)],
+                         healthcare_employment_wages$V3[c(6:49)],
+                         healthcare_employment_wages$V4[c(6:49)],
+                         healthcare_employment_wages$V5[c(6:49)],
+                         healthcare_employment_wages$V6[c(6:49)],
+                         healthcare_employment_wages$V7[c(6:49)],
+                         healthcare_employment_wages$V8[c(6:49)]) 
+
+colnames(employment)[2:8] <- years
+
+mean_salary <- data.frame("occupation" = occupation,
+                          healthcare_employment_wages$V9[c(6:49)],
+                          healthcare_employment_wages$V10[c(6:49)],
+                          healthcare_employment_wages$V11[c(6:49)],
+                          healthcare_employment_wages$V12[c(6:49)],
+                          healthcare_employment_wages$V13[c(6:49)],
+                          healthcare_employment_wages$V14[c(6:49)],
+                          as.character(healthcare_employment_wages$V15[c(6:49)]))
+
+colnames(mean_salary)[2:8] <- years
+
+# make long format
+employment_long <- employment %>%
+  pivot_longer(cols = c("2000":"2020"),
+               names_to = "year",
+               values_to = "employment") %>%
+  mutate(id = c(1:length(occupation))) %>%
+  mutate(employment = str_remove(employment, ","))
+
+mean_salary_long <- mean_salary %>%
+  pivot_longer(cols = c("2000":"2020"),
+               names_to = "year",
+               values_to = "mean_salary") %>%
+  mutate(id = c(1:length(occupation)))
+
+# join tables
+employment_and_salary <- employment_long %>%
+  left_join(mean_salary_long, by = "id") %>%
+  transmute("occupation" = occupation.x,
+            "year" = year.x, 
+            employment,
+            mean_salary) %>%
+  filter(str_detect(employment, '[0-9]+')) 
+
+# cast as numeric
+employment_and_salary$employment <- as.numeric(employment_and_salary$employment)
+employment_and_salary$mean_salary <- as.numeric(employment_and_salary$mean_salary)
+```
