@@ -216,6 +216,8 @@ The analysis suggested for this data set was to compare mortality rates for male
 country_mortality <- read.csv(url('https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/Project2/country_mortality.csv'), header=F, na.strings=c(""))
 ```
 
+### Cleaning Up the Data 
+
 Since this data frame had multiple column titles (column for each age group further split into genders), I chose to extract the information from each column into a descriptively named vector, ignoring the first 2 rows. I then created separate data frames for each age group and combined them. 
 
 ```{r}
@@ -395,11 +397,13 @@ This data frame was supplied as an excel file. I chose to convert to CSV (which 
 
 ### Loading the Data
 
-```{r}
+```{r warning=FALSE}
 healthcare_employment_wages <- read.csv(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/Project2/healthcare_employment_wages.csv"), header = F, na.strings = c(""))
 ```
 
 Looking into the data frame, I can see that there is a row for each occupation and a column for each year. To see how salary/employment changed overtime, I would need to change the years to rows. I can also see that "Employment" spans columns V2-V8 and "Mean hourly wage" spans V9-V15. The first 5 columns are unnecessary, as well as the last 3.  
+
+### Cleaning Up the Data 
 
 ```{r}
 occupation <- healthcare_employment_wages$V1[c(6:49)]
@@ -440,7 +444,7 @@ employment_long <- employment %>%
                names_to = "year",
                values_to = "employment") %>%
   mutate(id = c(1:length(occupation))) %>%
-  mutate(employment = str_remove(employment, ","))
+  mutate(employment = str_remove_all(employment, ","))
 
 mean_salary_long <- mean_salary %>%
   pivot_longer(cols = c("2000":"2020"),
@@ -460,4 +464,75 @@ employment_and_salary <- employment_long %>%
 # cast as numeric
 employment_and_salary$employment <- as.numeric(employment_and_salary$employment)
 employment_and_salary$mean_salary <- as.numeric(employment_and_salary$mean_salary)
+
+datatable(employment_and_salary, list(pageLength = 5))
 ```
+
+### Analysis
+
+```{r}
+employment_and_salary %>%
+  group_by(year) %>%
+  summarize(sum_employment = sum(employment)) %>%
+  ggplot(aes(x = year, y = sum_employment)) +
+  geom_bar(stat = "identity", fill = "#7CCD7C") +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Total Employment Over the Years", x = "Year", y = "Employment")
+  
+employment_and_salary %>%
+  group_by(year) %>%
+  summarize(mean_salary = mean(mean_salary)) %>%
+  ggplot(aes(x = year, y = mean_salary)) +
+  geom_point(color = "#2E8B57") + 
+  labs(title = "Mean Hourly Salary Across All Jobs Over the Years", x = "Year", y = "Mean Hourly Salary") +
+  scale_y_continuous(labels = scales::dollar)
+```
+
+We can see from the plots that both employment and salary went up over the years. 
+
+For the second plot of mean salary, this is not the best way to calculate mean salary, as this is really an average of an average, as the value is already the mean salary for each occupation. However, I chose to do this just to see the trend of the increase in salary. 
+
+There are many jobs in this data set. Are there any jobs that saw a decrease in employment/salary?
+
+```{r}
+change_2000_2020_employment <- employment_long %>%
+  transmute(occupation, year, employment) %>%
+  filter(year == 2000 | year == 2020, str_detect(employment, '[0-9]+')) %>%
+  pivot_wider(names_from = year,
+              values_from = employment)
+
+change_2000_2020_employment$employment_2000 <- as.numeric(change_2000_2020_employment$"2000")
+change_2000_2020_employment$employment_2020  <- as.numeric(change_2000_2020_employment$"2020")
+
+change_2000_2020_employment <- change_2000_2020_employment %>%
+  mutate(change_employment = employment_2020 - employment_2000) 
+
+dec_employment <- change_2000_2020_employment %>%
+  filter(change_employment < 0) %>%
+  transmute(occupation, employment_2000, employment_2020, change_employment)
+
+knitr::kable(dec_employment, col.names = c("Occupation", "2000", "2020", "Change in Employment from 2000-2020"))
+```
+
+```{r}
+change_2000_2020_salary <- mean_salary_long %>%
+  transmute(occupation, year, mean_salary) %>%
+  filter(year == 2000 | year == 2020, str_detect(mean_salary, '[0-9]+')) %>%
+  pivot_wider(names_from = year,
+              values_from = mean_salary)
+
+change_2000_2020_salary$mean_salary_2000 <- as.numeric(change_2000_2020_salary$"2000")
+change_2000_2020_salary$mean_salary_2020  <- as.numeric(change_2000_2020_salary$"2020")
+
+change_2000_2020_salary <- change_2000_2020_salary %>%
+  mutate(change_mean_salary = mean_salary_2020 - mean_salary_2000) 
+
+change_2000_2020_salary %>%
+  filter(change_mean_salary < 0) %>%
+  transmute(occupation, mean_salary_2000, mean_salary_2020, change_mean_salary)
+```
+
+There were a number of jobs where employment decreased from 200-2020, but this does not appear to be due to a decrease in salary for these positions. 
+
+If I were to analyze further, I would possibly group each job type into categories (ex: technicians, aides, etc.) and compare employment across these subcategories.  
+
