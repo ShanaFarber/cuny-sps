@@ -1,0 +1,57 @@
+﻿"Table HCEmpl. Health care employment and wages, by selected occupations: United States, selected years 2000–2020",,,,,,,,,,,,,,
+Excel version (with more data years and standard errors when available): https://www.cdc.gov/nchs/hus/contents2020-2021.htm#Table-HCEmpl,,,,,,,,,,,,,,
+[Data are based on a semiannual survey of nonfarm establishments],,,,,,,,,,,,,,
+,Employment\1,,,,,,,Mean hourly wage (dollars)\2,,,,,,
+Occupation title,2000,2005,2009,2010,2015,2016,2020,2000,2005,2009,2010,2015,2016,2020
+Health care practitioners and technical occupations,,,,,,,,,,,,,,
+Audiologists,"11,530","10,030","12,590","12,860","12,070","12,310","13,300",22.92,27.72,32.14,33.58,37.22,38.12,42.90
+Cardiovascular technologists and technicians,"40,080","43,560","48,070","48,720","51,400","53,760","55,980",16.81,19.99,23.91,24.38,26.97,27.45,29.30
+Clinical laboratory technologists and technicians,…,…,…,…,"320,550","326,920","326,220",…,…,…,…,24.91,25.13,26.92
+Dental hygienists,"148,460","161,140","173,900","177,520","200,550","204,990","194,830",24.99,29.15,32.63,33.02,34.96,35.31,37.53
+Diagnostic medical sonographers,"31,760","43,590","51,630","53,010","61,250","65,790","73,920",22.03,26.65,30.60,31.20,34.08,34.49,37.40
+Dietetic technicians,"28,010","23,780","24,510","23,890","28,950","32,240","26,430",10.98,12.20,13.72,13.86,14.03,14.12,15.83
+Dietitians and nutritionists,"43,030","48,850","53,220","53,510","59,740","61,430","66,330",18.76,22.09,25.59,26.13,28.08,28.69,30.84
+Emergency medical technicians and paramedics,"165,530","196,880","217,920","221,760","236,890","244,960","257,700",11.89,13.68,15.88,16.01,17.04,17.36,19.41
+Licensed practical and licensed vocational nurses,"679,470","710,020","728,670","730,290","697,250","702,400","676,440",14.65,17.41,19.66,19.88,21.17,21.56,24.08
+Magnetic resonance imaging technologists\3,…,…,…,…,"33,460","35,850","39,270",…,…,…,…,32.86,33.29,36.52
+"Medical dosimetrists, medical records specialists, and health technologists and technicians, all other",…,…,…,…,…,…,"318,010",…,…,…,…,…,…,23.21
+Nuclear medicine technologists,"18,030","18,280","21,670","21,600","19,740","19,650","17,510",21.56,29.10,32.91,33.20,36.06,36.52,39.46
+Nurse anesthetists\4,…,…,…,…,"39,410","39,860","41,960",…,…,…,…,77.04,78.86,90.96
+Nurse midwives\4,…,…,…,…,"7,430","6,270","7,120",…,…,…,…,45.01,49.23,55.55
+Nurse practitioners\4,…,…,…,…,"136,060","150,230","211,280",…,…,…,…,48.68,50.30,55.05
+Occupational therapists,"75,150","87,430","97,840","100,300","114,660","118,070","126,610",24.10,28.41,33.98,35.28,39.27,40.25,42.06
+"Opticians, dispensing","66,580","70,090","60,840","62,200","73,520","75,270","68,180",12.67,14.80,16.73,16.73,17.70,18.20,19.89
+Pharmacists,"212,660","229,740","267,860","268,030","295,620","305,510","315,470",33.39,42.62,51.27,52.59,57.34,57.82,60.32
+Pharmacy technicians,"190,940","266,790","331,890","333,500","379,430","398,390","415,310",10.38,12.19,13.92,14.10,15.23,15.47,17.52
+Physical therapists,"120,410","151,280","174,490","180,280","209,690","216,920","220,870",27.62,31.42,36.64,37.50,41.25,41.93,44.08
+Physician assistants,"55,490","63,350","76,900","81,420","98,470","104,050","125,280",29.17,34.17,40.78,41.89,47.73,49.08,55.81
+Psychiatric technicians,"53,350","62,040","70,730","72,650","58,450","61,720","85,330",12.53,14.04,14.77,15.15,17.44,17.25,18.31
+Radiation therapists,"13,100","14,120","15,570","16,590","16,930","17,450","17,390",25.59,30.59,37.18,37.64,40.61,40.86,45.34
+Radiologic technologists and technicians\3,"172,080","184,580","213,560","216,730","195,590","200,650","206,720",17.93,22.60,26.05,26.80,28.13,28.49,31.17
+Recreational therapists,"26,940","23,260","21,960","20,830","17,880","18,100"," 20,080 ",14.23,16.90,19.84,19.92,22.98,23.17,24.64
+Registered nurses\4,"2,189,670","2,368,070","2,583,770","2,655,020","2,745,910","2,857,180","2,986,500",22.31,27.35,31.99,32.56,34.14,34.70,38.47
+Respiratory therapists,"82,670","95,320","107,270","109,270","120,330","126,770","131,890",18.37,22.24,26.06,26.54,28.67,29.15,31.56
+Speech-language pathologists,"82,850","94,660","111,640","112,530","131,450","135,980","148,450",23.31,27.89,32.86,33.60,36.97,37.60,40.02
+Health care support occupations,,,,,,,,,,,,,,
+Dental assistants,"250,870","270,720","294,020","294,030","323,110","327,290","312,140",12.86,14.41,16.35,16.41,17.75,18.22,20.34
+Home health and personal care aides,…,…,…,…,…,…,"3,211,590",…,…,…,…,…,…,13.49
+Massage therapists,"24,620","37,670","55,920","60,040","92,090","95,830","85,040",15.51,19.33,19.13,19.12,20.76,21.39,22.77
+Medical assistants,"330,830","382,720","495,970","523,260","601,240","623,560","710,200",11.46,12.58,14.16,14.31,15.34,15.79,17.75
+Medical equipment preparers,"32,760","41,790","47,070","47,310","50,330","52,500","56,870",10.68,12.42,14.32,14.59,16.80,17.29,19.75
+Medical transcriptionists,"97,330","90,380","82,810","78,780","57,830","54,070","49,530",12.37,14.36,16.03,16.12,17.17,17.86,17.94
+Nursing assistants\5,"1,273,460","1,391,430","1,438,010","1,451,090","1,420,570","1,443,150","1,371,050",9.18,10.67,12.01,12.09,12.89,13.29,15.41
+Occupational therapy aides,"8,890","6,220","8,040","7,180","7,570","7,210","5,630",11.21,13.20,13.89,14.95,14.95,15.31,16.42
+Occupational therapy assistants,"15,910","22,160","26,680","27,720","35,460","38,170","42,750",16.76,19.13,24.44,24.66,28.05,28.62,30.49
+Orderlies\5,…,…,…,…,"52,660","52,940","43,570",…,…,…,…,13.26,13.73,15.28
+Pharmacy aides,"59,890","46,610","52,230","49,580","38,040","36,660","38,900",9.10,9.76,10.74,10.98,13.20,13.66,15.50
+Physical therapist aides,"34,620","41,930","44,160","45,900","50,540","50,030","45,790",10.06,11.01,12.01,12.02,13.19,13.41,14.47
+Physical therapist assistants,"44,120","58,670","63,750","65,960","81,230","85,580","92,740",16.52,18.98,23.36,23.95,26.56,27.33,28.58
+Psychiatric aides,"57,680","56,150","62,610","64,730","69,550","67,410","51,550",10.79,11.47,13.19,12.84,13.55,13.83,16.01
+"… Category not applicable.
+\1Number of filled positions. This table includes both full- and part-time wage and salary positions. Estimates do not include the self-employed, owners and partners in unincorporated firms, household workers, or unpaid family workers. Estimates are rounded to the nearest 10.
+\2Mean hourly wage rate for an occupation is the total wages that all workers in the occupation earn in an hour divided by the total number of employees in the occupation. For more information, see: https://www.bls.gov/oes/current/oes_tec.htm.
+\3Starting with 2012 data, the Radiologic technologists and technicians occupation category (29-2037) was split into two occupations as part of the 2010 Standard Occupational Classification (SOC) revision: Radiologic technologists (29-2034) and Magnetic resonance imaging technologists (29-2035). As a result, data before 2012 included radiologic technologists as well as magnetic resonance imaging technologists and are not comparable with data from 2012 and beyond.
+\4Starting with 2012 data, the Registered nurses occupation category (29-1111) was split into four occupations as part of the 2010 SOC revision: Registered nurses (29-1141) plus three advanced practice nursing occupations–Nurse anesthetists (29-1151), Nurse midwives (29-1161), and Nurse practitioners (29-1171). As a result, data before 2012 included registered nurses as well as nurse anesthetists, nurse midwives, and nurse practitioners and are not comparable with data from 2012 and beyond.
+\5Starting with 2012 data, the Nursing aides, orderlies, and attendants occupation category (31-1012) was split into two occupations as part of the 2010 SOC revision: Nursing assistants (31-1014) and Orderlies (31-1015). As a result, data before 2012 included nursing assistants as well as orderlies and are not comparable with data from 2012 and beyond.",,,,,,,,,,,,,,
+"NOTES: This table excludes occupations such as dentists, physicians, and chiropractors, which have a large percentage of workers who are self-employed. Challenges in using Occupational Employment and Wage Statistics data as a time series include changes in the occupational, industrial, and geographical classification systems; changes in the way data are collected; changes in the survey reference period; and changes in mean wage estimation methodology, as well as permanent features of the methodology. Data for 2000–2009 were collected using the 2000 SOC system. Data for 2010 (see spreadsheet version) were collected using a hybrid structure of the 2000 and 2010 SOC systems. Data for 2015–2016 (see spreadsheet version) were collected using the 2010 SOC system. Data for 2020 were collected using the 2018 SOC system. See Sources and Definitions, Occupational Employment and Wage Statistics (OEWS). Data for additional years are available. See the Excel spreadsheet on the Health, United States website at: https://www.cdc.gov/nchs/hus/index.htm.",,,,,,,,,,,,,,
+"SOURCE: U.S. Department of Labor, Bureau of Labor Statistics. Occupational Employment and Wage Statistics. Available from: https://www.bls.gov/oes/tables.htm. See Sources and Definitions, Occupational Employment and Wage Statistics (OEWS).",,,,,,,,,,,,,,
