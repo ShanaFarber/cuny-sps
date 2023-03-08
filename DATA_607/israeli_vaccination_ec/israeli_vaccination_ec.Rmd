@@ -17,7 +17,7 @@ library(formattable)
 The chart above describes _August 2021_ data for Israeli hospitalization (“Severe Cases”) rates for people under 50 (assume “50 and under”) and over 50, for both un-vaccinated and fully vaccinated populations. 
 
 ```{r}
-israeli_vaccination <- read.csv("C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_607/israeli_vaccination_ec/israeli_vaccination_data_analysis_start.csv", na.strings = c("", " "))
+israeli_vaccination <- read.csv(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/israeli_vaccination_ec/israeli_vaccination_data_analysis_start.csv"), na.strings = c("", " "))
 ```
 
 ## Cleaning Up the Data
