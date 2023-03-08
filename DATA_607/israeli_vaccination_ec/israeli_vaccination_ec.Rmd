@@ -1,0 +1,140 @@
+---
+title: "EC 3 - Israeli Vaccination Data"
+author: "Shoshana Farber"
+date: "March 8, 2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(formattable)
+```
+
+## Loading the Data
+
+The chart above describes _August 2021_ data for Israeli hospitalization (“Severe Cases”) rates for people under 50 (assume “50 and under”) and over 50, for both un-vaccinated and fully vaccinated populations. 
+
+```{r}
+israeli_vaccination <- read.csv("C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_607/israeli_vaccination_ec/israeli_vaccination_data_analysis_start.csv", na.strings = c("", " "))
+```
+
+## Cleaning Up the Data
+
+The data is only in the first 5 rows:
+
+```{r}
+israeli_vaccination_data <- head(israeli_vaccination, 5)
+
+# fix column names
+names(israeli_vaccination_data) <- c("age", 
+                                    "pop_percent_not_vax", 
+                                    "pop_percent_fully_vax", 
+                                    "severe_cases_not_vax_per_100k",
+                                    "severe_cases_fully_vax_per_100k",
+                                    "efficacy_vs_severe_disease")
+
+# remove extra row
+israeli_vaccination_data <- israeli_vaccination_data[c(2:5),] %>%
+  fill(age)
+
+# split pop_percent into pop and percent for not vax and fully vax
+pop <- israeli_vaccination_data[c(1,3), c(2:3)] %>%
+  transmute("pop_not_vax" = as.integer(str_remove_all(pop_percent_not_vax, ",")),
+            "pop_fully_vax" = as.integer(str_remove_all(pop_percent_fully_vax, ",")))
+
+percent <- israeli_vaccination_data[-c(1,3), c(2:3)] %>%
+  transmute("percent_not_vax" = as.numeric(str_remove(pop_percent_not_vax, "%")) / 100,
+            "percent_fully_vax" = as.numeric(str_remove(pop_percent_fully_vax, "%")) / 100)
+
+# combine into one data frame 
+israeli_vaccination_cleaned <- israeli_vaccination_data[c(1,3), c(1,4,5,6)] %>%
+  cbind(pop, percent) %>%
+  transmute(age, 
+            pop_not_vax, 
+            percent_not_vax, 
+            pop_fully_vax, 
+            percent_fully_vax,
+            severe_cases_not_vax_per_100k = as.integer(severe_cases_not_vax_per_100k),
+            severe_cases_fully_vax_per_100k = as.integer(severe_cases_fully_vax_per_100k))
+
+# fix row numbers
+row.names(israeli_vaccination_cleaned) <- 1:length(israeli_vaccination_cleaned$age)
+
+knitr::kable(israeli_vaccination_cleaned,
+  col.names = c("Age", "Pop Not Vax", "Percent Not Vax", "Pop Fully Vax", "Percent Fully Vax", "Severe Cases Not Vax Per 100K", "Severe Cases Fully Vax Per 100K"))
+```
+
+## Analysis
+
+Analyze the data, and try to answer the questions posed in the spreadsheet. You’ll need some high level domain knowledge around (1) Israel’s total population, (2) Who is eligible to receive
+vaccinations, and (3) What does it mean to be fully vaccinated? Please note any apparent discrepancies that you observe in your analysis.
+
+### Question 1
+
+**Do you have enough information to calculate the total population? What does this total population represent?**
+
+The data set includes population numbers for Israelis who were fully vaccinated and not vaccinated in August of 2021. Included in the data set is the percentage that non vaccinated and fully vaccinated people make of each age group. I believe that fully vaccinated in August 2021 meant 2-3 shots. I am unsure whether individuals who are partially vaccinated (i.e. have received one shot) were included with those who are not vaccinated. 
+
+To find the total population in this table, divide by the percentage that each group makes up of the total population and then add the populations for each age group. 
+
+```{r}
+israeli_vaccination_cleaned %>%
+  mutate(pop_based_non_vax = pop_not_vax / percent_not_vax, # population size based on non vaccinated individuals
+         pop_based_fully_vax = pop_fully_vax / percent_fully_vax) %>% # pop size based on fully vaccinated individuals
+  summarize(pop_based_non_vax = sum(pop_based_non_vax), pop_based_fully_vax = sum(pop_based_fully_vax))
+```
+
+The total population for this data set was about **7.15-7.16 million**. 
+
+Israel's total population in 2021 was about **8.9 million** ([source](https://www.macrotrends.net/countries/ISR/israel/population)). This shows that the data does not represent the entire population. As such, there is not enough information in this table to calculate the total population. I believe this is because the data set only includes those who were eligible at the time to receive the vaccine, which would have been from age 12 and above. (According to [this source](https://www.reuters.com/world/middle-east/israel-announces-5-11-year-olds-now-eligible-covid-19-vaccination-2021-11-14/), Israel did not start vaccinating children under 12 until November of 2021.) Therefore, the total population in this table excludes those under 12 years old. 
+
+### Question 2
+
+Calculate the Efficacy vs. Severe Disease. Explain you results. 
+
+**Definition: `r israeli_vaccination[11,2]`**
+
+```{r}
+israeli_vaccination_cleaned <- israeli_vaccination_cleaned %>%
+  mutate(percent_severe_cases_not_vax_per_100k = (severe_cases_not_vax_per_100k/pop_not_vax) * 100000,
+         percent_severe_cases_fully_vax_per_100k = (severe_cases_fully_vax_per_100k/pop_fully_vax) * 100000)
+
+israeli_vaccination_cleaned <- israeli_vaccination_cleaned %>%
+  mutate(efficacy_vs_severe_disease = 1 - (percent_severe_cases_fully_vax_per_100k / percent_severe_cases_not_vax_per_100k))
+
+israeli_vax_efficacy <- israeli_vaccination_cleaned %>%
+  transmute(age, efficacy_vs_severe_disease)
+
+israeli_vax_efficacy$efficacy_vs_severe_disease <- percent(israeli_vax_efficacy$efficacy_vs_severe_disease)
+
+knitr::kable(israeli_vax_efficacy, col.names = c("Age", "Efficacy vs. Severe Disease"))
+```
+
+The vaccine is 91.84% effective for those above 50 and 85.21% effective for those 50 and younger. 
+
+### Question 3
+
+**From your calculation of efficacy vs. disease, are you able to compare the rate of severe cases in un-vaccinated individuals to that in vaccinated individuals?**
+
+Yes, you can compare the rates of severe disease by using the inverse of the percent efficacy to determine the case reduction in the un-vaccinated population had they been vaccinated. 
+
+For example, the rate of severe cases for the above 50 population was 43 cases per 100,000 people. If we multiply this by the inverse of the efficacy for this age group, we can see that the rate for vaccinated individuals based on this population would be about 3.5 cases in 100,000 people. 
+
+```{r}
+disease_rates <- israeli_vaccination_cleaned %>%
+  transmute(age, 
+            severe_cases_not_vax_per_100k,
+            rate_fully_vax_per_100k = (1-efficacy_vs_severe_disease) * severe_cases_not_vax_per_100k)
+
+knitr::kable(disease_rates, col.names = c("Age", "Rate Not Vax Per 100K", "Rate Fully Vax Per 100K"))  
+```
+
+## Conclusions
+
+The data does not include enough information to calculate the total population, as it does not include those who were ineligible to receive the vaccine in August of 2021. As such, the data excludes population counts for children under 12 years old. 
+
+The vaccine was 91.84% effective for people over 50 and 85.21% effective for those 50 and under. 
+
+Based on the above efficacy, the vaccine causes about a 91.84% reduction in disease for those above 50 and about an 85.21% reduction for those 50 and under. Based on this, we can compare the rates of disease for vaccinated and un-vaccinated individuals. For the above 50 age group, 43 in 100,000 people were hospitalized for the disease. Based on the reduction, for vaccinated individuals in this age group that rate would be about 3.5 in 100,000 people. For the 50 and below age group, the rate of hospitalization was 171 in 100,000 people. For vaccinated individuals in this age group, this rate would have been about 25.3 in 100,000 people. 
