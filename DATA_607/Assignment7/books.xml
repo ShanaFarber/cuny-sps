@@ -6,7 +6,7 @@
     <release_year>2005</release_year>
     <genres>Action, Fantasy</genres>
     <pages>652</pages>
-    <copies_sold_worlwide>65000000</copies_sold_worlwide>
+    <copies_sold_worldwide>65000000</copies_sold_worldwide>
   </book>
 
   <book>
@@ -24,7 +24,7 @@
     <release_year>2004</release_year>
     <genres>Drama, Crime, Biography</genres>
     <pages>288</pages>
-    <copies_sold_worlwide></copies_sold_worlwide>
+    <copies_sold_worldwide></copies_sold_worldwide>
   </book>
 
 </books>
