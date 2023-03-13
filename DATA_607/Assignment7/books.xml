@@ -1,4 +1,5 @@
 <books>
+
   <book>
     <title>Harry Potter and the Half-Blood Prince</title>
     <author>J.K Rowling</author>
@@ -10,8 +11,8 @@
     <pages>652</pages>
     <copies_sold_worlwide>65000000</copies_sold_worlwide>
   </book>
+
   <book>
-    <book>
     <title>The Shining</title>
     <author>Stephen King</author>
     <release_year>1977</release_year>
@@ -22,7 +23,7 @@
     <pages>688</pages>
     <copies_sold_worlwide>700000</copies_sold_worlwide>
   </book>
-  <book>
+
   <book>
     <title>House of Gucci: A True Story of Murder, Madness, Glamour, and Greed</title>
     <author>Sara Gay Forden</author>
@@ -30,10 +31,10 @@
     <genres>
         <genre1>Drama</genre1>
         <genre2>Crime</genre2>
-        <genre3>Biography</Genre3>
+        <genre3>Biography</genre3>
     </genres>
     <pages>288</pages>
     <copies_sold_worlwide></copies_sold_worlwide>
   </book>
-  <book>
+
 </books>
