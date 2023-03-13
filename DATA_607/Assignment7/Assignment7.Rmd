@@ -1,0 +1,85 @@
+---
+title: "DATA 607 - Assignment 8"
+author: "Shoshana Farber"
+date: "March 12, 2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(rvest)
+library(jsonlite)
+library(xml2)
+library(RCurl)
+```
+
+**Pick three of your favorite books on one of your favorite subjects. At least one of the books should have more than one author. For each book, include the title, authors, and two or three other attributes that you find interesting. Take the information that you’ve selected about these three books, and separately create three files which store the book’s information in HTML (using an html table), XML, and JSON formats.**
+
+Instead of having a book with multiple authors, I chose an element (genres) that has multiple values. 
+
+## HTML
+
+```{r}
+load_html <- read_html(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/Assignment7/books.html"))
+
+html_table <- load_html %>%
+  html_element("table") %>%
+  html_table()
+
+html_table %>% 
+  mutate(across(copies_sold_worldwide, ~ format(.x, big.mark = ","))) %>% 
+  knitr::kable()
+```
+
+## XML
+
+```{r eval = F}
+xml_data <- read_xml(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/Assignment7/books.xml"))
+
+xml_structure(xml_data)
+
+titles <- xml_data %>%
+  xml_find_all("//title") %>%
+  xml_text()
+
+authors <- xml_data %>%
+  xml_find_all("//author") %>%
+  xml_text()
+
+release_years <- xml_data %>%
+  xml_find_all("//release_year") %>%
+  xml_text()
+
+genres <- xml_data %>%
+  xml_find_all("//genres") %>%
+  xml_text()
+
+pages <- xml_data %>%
+  xml_find_all("//pages") %>%
+  xml_text()
+
+copies_sold_worldwide <- xml_data %>%
+  xml_find_all("//copies_sold_worldwide") %>%
+  xml_text()
+
+xml_table <- data.frame("title" = titles,
+                        "author" = authors,
+                        "release_year" = release_years,
+                        "genres" = genres,
+                        "pages" = pages,
+                        "copies_cold_worldwide" = copies_sold_worldwide)
+```
+
+## JSON
+
+```{r}
+json_table <- fromJSON(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/Assignment7/books.json"))
+
+json_table %>% 
+  mutate(across(copies_sold_worldwide, ~ format(.x, big.mark = ","))) %>% 
+  knitr::kable()
+```
+
+The data frames are identical. 
