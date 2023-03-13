@@ -1,0 +1,5 @@
+[
+    {"title": "Harry Potter and the Half-Blood Prince", "author": "J.K. Rowling", "release_year": 2005, "genres": [{"genre1": "Action", "genre2": "Fantasy"}], "pages": 652, "copies_sold_worldwide": 65000000},
+    {"title": "The Shining", "author": "Stephen King", "release_year": 1977, "genres": [{"genre1": "Horror", "genre2": "Mystery"}], "pages": 688, "copies_sold_worldwide": 700000},
+    {"title": "House of Gucci: A True Story of Murder, Madness, Glamour, and Greed", "author": "Sara Gay Forden", "release_year": 2004, "genres": [{"genre1": "Drama", "genre2": "Crime", "genre3": "Biography"}], "pages": 288, "copies_sold_worldwide": ""}
+]
