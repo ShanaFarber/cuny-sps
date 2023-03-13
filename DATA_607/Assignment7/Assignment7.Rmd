@@ -35,11 +35,19 @@ html_table %>%
 
 ## XML
 
-```{r eval = F}
+```{r}
 xml_data <- read_xml(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/Assignment7/books.xml"))
+```
 
+Looking at the structure of the XML to get the column names:
+
+```{r eval = F}
 xml_structure(xml_data)
+```
 
+Extracting the data and combining into a data frame: 
+
+```{r}
 titles <- xml_data %>%
   xml_find_all("//title") %>%
   xml_text()
@@ -70,6 +78,13 @@ xml_table <- data.frame("title" = titles,
                         "genres" = genres,
                         "pages" = pages,
                         "copies_cold_worldwide" = copies_sold_worldwide)
+
+xml_table$release_year <- as.integer(xml_table$release_year)
+xml_table$pages <- as.integer(xml_table$pages)
+xml_table$copies_cold_worldwide <- as.integer(xml_table$copies_cold_worldwide)
+
+xml_table %>%
+  knitr::kable()
 ```
 
 ## JSON
@@ -82,4 +97,4 @@ json_table %>%
   knitr::kable()
 ```
 
-The data frames are identical. 
+The data from HTML and JSON read in exactly the same. For the XML, I needed to cast the numeric columns to integer type, as they read in as characters. I also for some reason cannot get my XML `copies_sold_worldwide` column to format correctly in `kable()`. Other than, the table are identical. 
