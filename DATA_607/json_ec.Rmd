@@ -1,0 +1,296 @@
+---
+title: "EC 4 - JSON"
+author: "Shoshana Farber"
+date: "March 21, 2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(httr)
+library(jsonlite)
+library(tidyverse)
+library(snakecase)
+library(DT)
+library(countrycode)
+```
+
+**Working with the two JSON files available through the API at [nobelprize.org](https://nobelprize.readme.io/reference/getting-started), ask and answer 4 interesting questions, e.g. “Which country “lost” the most nobel laureates (who were born there but received their Nobel prize as a citizen of a different country)?”**
+
+## Requesting from the API {.tabset .tabset-fade .tabset-pills}
+
+### V1 
+
+```{r get-api-info}
+# laureates api V1
+url_v1 <- GET('http://api.nobelprize.org/v1/laureate.json?gender=All')
+
+laureates_data_v1 <- fromJSON(rawToChar(url_v1$content))$laureates
+```
+
+I first used the `GET()` function from the **`httr`** library to get the information from the API urls. I then used `rawToChar()` to get the data into a readable format and `fromJSON()` to read the JSON data into R. 
+
+Helpful link: [DATAQUEST R API Tutorial](https://www.dataquest.io/blog/r-api-tutorial/).
+
+### V2 
+
+```{r}
+# laureates api V2
+url_v2 <- GET('https://api.nobelprize.org/2.1/laureates')
+
+laureates_data_v2 <- fromJSON(rawToChar(url_v2$content))$laureates
+```
+
+I first used the `GET()` function from the **`httr`** library to get the information from the API urls. I then used `rawToChar()` to get the data into a readable format and `fromJSON()` to read the JSON data into R. 
+
+Helpful link: [DATAQUEST R API Tutorial](https://www.dataquest.io/blog/r-api-tutorial/).
+
+## Cleaning up the Data for Analysis {.tabset .tabset-fade .tabset-pills}
+
+### V1
+
+```{r}
+# un-nest the prizes data frame
+laureates_v1 <- laureates_data_v1 %>% 
+  unnest_wider(prizes)
+
+names(laureates_v1) <- to_snake_case(names(laureates_v1))
+
+# un-nest the year, category, share, motivation, and affiliations columns
+years_v1 <- laureates_v1 %>%
+  transmute(id, year) %>%
+  unnest_longer(year, values_to = "year")
+
+categories_v1 <- laureates_v1 %>%
+  transmute(id, category) %>%
+  unnest_longer(category, values_to = "category")
+
+shares_v1 <- laureates_v1 %>%
+  transmute(id, share) %>%
+  unnest_longer(share, values_to = "share")
+
+motivations_v1 <- laureates_v1 %>%
+  transmute(id, motivation) %>%
+  unnest_longer(motivation, values_to = "motivation")
+
+id_affiliations_v1 <- c()
+
+for (i in 1:nrow(laureates_v1)) {
+  temp_list <- c()
+  
+  for (j in 1:length(unlist(laureates_v1$affiliations[i]))) {
+  temp <- unlist(laureates_v1$affiliations[j])
+  
+  temp_list <- append(temp_list, paste(temp[["name"]], temp[["city"]], temp[["country"]], sep = ", "))
+  
+  }
+  
+  id_affiliations_v1 <- append(id_affiliations_v1, paste(laureates_v1$id[i], list(temp_list), sep = ":"))
+}
+
+affiliations_v1 <- data.frame(id_affiliations_v1) %>%
+  separate(col = id_affiliations_v1, into = c("id", "affiliations"), sep = ":")
+
+# putting together year, categories, motivations
+ycm_v1 <- years_v1 %>%
+  cbind(categories_v1$category) %>%
+  cbind(shares_v1$share) %>%
+  cbind(motivations_v1$motivation)
+
+names(ycm_v1) <- c("id", "year", "category", "share", "motivation")
+
+# putting together the final data frame
+#laureates <- 
+laureates_v1 <- laureates_v1 %>%
+  select(-year, -category, -share, -motivation, -affiliations) %>%
+  right_join(affiliations_v1, by = "id") %>%
+  mutate(affiliations = unlist(affiliations)) %>%
+  right_join(ycm_v1, by = "id") %>%
+  unique()
+
+datatable(laureates_v1, list(pageLength = 5, scrollX = T))
+```
+
+### V2
+
+```{r}
+laureates_v2 <- laureates_data_v2 %>%
+  mutate(knownName = knownName[["en"]],
+         givenName = givenName[["en"]],
+         familyName = familyName[["en"]],
+         fullName = fullName[["en"]],
+         birth_date = birth[["date"]],
+         birth_country = birth[["place"]][["country"]][["en"]],
+         birth_continent =  birth[["place"]][["continent"]][["en"]],
+         death_date = death[["date"]],
+         death_country = death[["place"]][["country"]][["en"]],
+         death_continent = death[["place"]][["continent"]][["en"]]) %>%
+  unnest_wider(nobelPrizes, names_repair = "unique") %>%
+  mutate(category = category[["en"]],
+         motivation = motivation[["en"]]) %>%
+  transmute(id, fullName, gender, birth_date, birth_country, birth_continent, death_date, death_country, death_continent, awardYear, category, motivation)
+
+datatable(laureates_v2, list(pageLength = 5, scrollX = T))
+```
+
+## Questions and Analysis
+
+The version 1 data set is much more robust so I chose to do the analysis on that data frame. 
+
+### Question 1 {.tabset .tabset-fade .tabset-pills}
+
+**Which country produced the most Nobel Prize laureates (based on `born_country_code`)? What are the top 10 countries with the most winners?**
+
+#### Most Nobel Prizes
+
+```{r most-prizes}
+laureates_v1 %>%
+  count(born_country_code) %>%
+  arrange(desc(n)) %>%
+  head(1) %>%
+  knitr::kable(col.names = c("Country Code", "Number of Laureates"))
+```
+
+The country with the most Nobel Prize laureates is the United States, with 289 laureates.
+
+#### Top 10
+
+```{r prizes-per-country}
+laureates_v1 %>%
+  filter(!is.na(born_country_code)) %>%
+  count(born_country_code) %>%
+  mutate(country = countrycode(born_country_code, origin = "iso2c", destination = "country.name")) %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  ggplot(aes(x = country, y = n, fill = country)) +
+    geom_bar(stat = "identity") +
+    labs(title = "Top 10 Countries with the Most Nobel Prize Laureates", 
+       x = "Country",
+       y = "Number of Prizes") +
+    theme(legend.position = "none") +
+    geom_text(aes(label = n), vjust = -0.3) +
+    theme(axis.text.x = element_text(angle = 15))
+```
+
+### Question 2
+
+**What is the proportion of Nobel Prize laureates from each continent?**
+
+```{r}
+laureates_v1 %>%
+  mutate(continent = countrycode(born_country_code, origin = "iso2c", destination = "continent")) %>%
+  count(continent) %>%
+  mutate(total = sum(n),
+         prop = n / total) %>%
+  ggplot(aes(x = continent, y = prop)) +
+    geom_bar(stat = "identity", fill = "plum") +
+    labs(title = "Prizes per Continent", 
+       x = "Continent",
+       y = "Percentage of Nobel Prizes") +
+    geom_text(aes(label = paste0(round(prop*100, 0), '%'), vjust = -0.3)) +
+    scale_y_continuous(labels = scales::percent)
+```
+
+Europe produced the highest proportion of Nobel Prize laureates (51%). 
+
+### Question 3 {.tabset .tabset-fade .tabset-pills}
+
+**How many of those winners were male? How many were female?**
+
+#### Table
+
+```{r}
+male_female <- laureates_v1 %>%
+  mutate(continent = countrycode(born_country_code, origin = "iso2c", destination = "continent")) %>%
+  group_by(gender) %>%
+  filter(gender %in% c("male", "female") & !is.na(continent)) %>%
+  count(continent) %>%
+  pivot_wider(names_from = gender, values_from = n)
+
+male_female %>%
+  knitr::kable(col.names = c("Continent", "Female", "Male"))
+```
+
+#### Graph 
+
+```{r}
+laureates_v1 %>%
+  mutate(continent = countrycode(born_country_code, origin = "iso2c", destination = "continent")) %>%
+  filter(!is.na(continent)) %>%
+  ggplot(aes(x = continent, fill = gender)) +
+    geom_bar(position = "dodge") +
+    labs(title = "Nobel Prize Laureates per Continent per Gender", 
+       x = "Continent",
+       y = "Number of Nobel Prize Laureates") +
+    geom_text(aes(label = after_stat(count)), stat="count", position = position_dodge(.9), vjust = -0.5)
+```
+
+#### Total Male vs. Female
+
+```{r}
+male_female %>%
+  summarize(total_female = sum(female),
+            total_male = sum(male)) %>%
+  knitr::kable(col.names = c("Total Female Laureates", "Total Male Laureates"))
+```
+
+There are many more males than females who were awarded Nobel Prizes. There were 61 female and 897 male laureates in total. 
+
+### Question 4
+
+**What years do the data span?**
+
+```{r}
+laureates_v1 %>%
+  summarize(min_year = min(year), max_year = max(year))
+```
+
+The data includes Nobel Prize laureates from 1901 till 2022. 
+
+### Question 5
+
+**Under which category were the most Nobel Prizes awarded?**
+
+```{r}
+laureates_v1 %>%
+  count(category) %>%
+  arrange(desc(n)) %>%
+  knitr::kable(col.names = c("Category", "Number of Awards"))
+```
+
+Medicine was the highest awarded Nobel Prize.
+
+### Question 6 {.tabset .tabset-fade .tabset-pills}
+
+**How many people won more than one Nobel Prize? Who were they? Who won the most? Did any of them share Nobel Prizes or were they all solo?**
+
+#### Most Prizes
+
+```{r}
+most_nobels <- laureates_v1 %>%
+  filter(gender != "org") %>%
+  mutate(full_name = paste(firstname, surname)) %>%
+  count(full_name) %>%
+  filter(n > 1)
+
+knitr::kable(most_nobels, col.names = c("Name", "Number of Awards"))
+```
+
+Barry Sharpless, Frederick Sanger, John Bardeen, Linus Pauling, and Marie Curie were awarded the most Nobel Prizes, with 2 each.
+
+#### Shares
+
+```{r}
+most_nobels_info <- laureates_v1 %>%
+  mutate(full_name = paste(firstname, surname)) %>%
+  filter(full_name %in% most_nobels$full_name) %>%
+   transmute(full_name, year, category, share)
+
+knitr::kable(most_nobels_info, col.names = c("Name", "Year", "Category", "Share"))
+```
+
+Linus Pauling was awarded a Nobel Prize in Physics and a Nobel Peace Prize, each of which he won solo. Marie Curie shared a Nobel Prize in Physics and was awarded her own Nobel Prize in Chemistry. John Bardeen shared both of his Nobel Prizes in Physics. Frederick Sanger received his own Nobel Prize in Chemistry in 1958 and shared a Nobel Prize in Chemistry in 1980. Berry Sharpless shared both of his Nobel Prizes in Chemistry. 
+
+
+
