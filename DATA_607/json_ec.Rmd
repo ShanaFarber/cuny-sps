@@ -31,7 +31,7 @@ laureates_data_v1 <- fromJSON(rawToChar(url_v1$content))$laureates
 
 I first used the `GET()` function from the **`httr`** library to get the information from the API urls. I then used `rawToChar()` to get the data into a readable format and `fromJSON()` to read the JSON data into R. 
 
-Helpful link: [DATAQUEST R API Tutorial](https://www.dataquest.io/blog/r-api-tutorial/).
+Helpful link: [Dataquest R API Tutorial](https://www.dataquest.io/blog/r-api-tutorial/).
 
 ### V2 
 
@@ -44,7 +44,7 @@ laureates_data_v2 <- fromJSON(rawToChar(url_v2$content))$laureates
 
 I first used the `GET()` function from the **`httr`** library to get the information from the API urls. I then used `rawToChar()` to get the data into a readable format and `fromJSON()` to read the JSON data into R. 
 
-Helpful link: [DATAQUEST R API Tutorial](https://www.dataquest.io/blog/r-api-tutorial/).
+Helpful link: [Dataquest R API Tutorial](https://www.dataquest.io/blog/r-api-tutorial/).
 
 ## Cleaning up the Data for Analysis {.tabset .tabset-fade .tabset-pills}
 
