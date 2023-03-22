@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = T, message = F, warning = F)
 
 library(httr)
 library(jsonlite)
@@ -105,11 +105,10 @@ names(ycm_v1) <- c("id", "year", "category", "share", "motivation")
 laureates_v1 <- laureates_v1 %>%
   select(-year, -category, -share, -motivation, -affiliations) %>%
   right_join(affiliations_v1, by = "id") %>%
-  mutate(affiliations = unlist(affiliations)) %>%
   right_join(ycm_v1, by = "id") %>%
   unique()
 
-datatable(laureates_v1, list(pageLength = 5, scrollX = T))
+rmarkdown::paged_table(laureates_v1)
 ```
 
 ### V2
@@ -131,7 +130,7 @@ laureates_v2 <- laureates_data_v2 %>%
          motivation = motivation[["en"]]) %>%
   transmute(id, fullName, gender, birth_date, birth_country, birth_continent, death_date, death_country, death_continent, awardYear, category, motivation)
 
-datatable(laureates_v2, list(pageLength = 5, scrollX = T))
+rmarkdown::paged_table(laureates_v2)
 ```
 
 ## Questions and Analysis

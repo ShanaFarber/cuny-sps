@@ -1,0 +1,210 @@
+---
+title: "DATA 607 - Assignment 9"
+author: "Shoshana Farber"
+date: "March 26, 2023"
+output: 
+  rmdformats::readthedown
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, warning = F, message = F)
+
+library(tidyverse)
+library(jsonlite)
+library(kableExtra)
+library(dotenv)
+
+load_dot_env(".env")
+```
+
+**The New York Times web site provides a rich set of APIs, as described here: https://developer.nytimes.com/apis. You’ll need to start by signing up for an API key. **
+
+**Your task is to choose one of the New York Times APIs, construct an interface in R to read in the JSON data, and transform it into an R DataFrame.**
+
+## Connecting and Requesting from the API {.tabset .tabset-fade .tabset-pills}
+
+I am using the **Top Stories** API health and science sections. 
+
+```{r get-api}
+url <- paste0('https://api.nytimes.com/svc/topstories/v2/science.json?api-key=', Sys.getenv("TIMES_API_KEY"))
+
+url2 <- paste0('https://api.nytimes.com/svc/topstories/v2/health.json?api-key=', Sys.getenv("TIMES_API_KEY"))
+
+science_data <- fromJSON(url)$results %>%
+  as.data.frame() %>%
+  add_column("web_section" = "Science", .before = "section")
+
+health_data <- fromJSON(url2)$results %>%
+  as.data.frame() %>%
+  add_column("web_section" = "Health", .before = "section")
+```
+
+### Science 
+
+```{r science-data-table}
+rmarkdown::paged_table(science_data)
+```
+
+### Health
+
+```{r health-data-table}
+rmarkdown::paged_table(health_data)
+```
+
+## Tidying the Data {.tabset .tabset-fade .tabset-pills}
+
+### Nested Format
+
+In this format, I have removed columns that I do not want in the final data frame and I have left the `des_facet` and `org_facet` columns nested. 
+
+```{r nested-format}
+science_and_health_nested <- rbind(science_data, health_data) %>%
+  select(web_section, title, abstract, url, "author" = byline, published_date, updated_date, des_facet, org_facet)
+
+rmarkdown::paged_table(science_and_health_nested)
+```
+
+In this way, one has all the necessary information and can un-nest the `des_facet` or `org_facet` columns as they see fir for analysis. 
+
+### Long Format
+
+For the long format, the `des_facet` and `org_facet` columns are un-nested. The result is a set of data tables that have multiple rows for each article based on the number of tags in the `des_facet` or `org_facet` columns.  
+
+```{r long-format}
+# unnest des_facet
+science_and_health_des_long <- rbind(science_data, health_data) %>%
+  select(web_section, title, abstract, url, "author" = byline, published_date, updated_date, des_facet, org_facet) %>%
+  unnest(des_facet)
+
+#unnest org_facet
+science_and_health_org_long <- rbind(science_data, health_data) %>%
+  select(web_section, title, abstract, url, "author" = byline, published_date, updated_date, des_facet, org_facet) %>%
+  unnest(org_facet)
+
+
+rmarkdown::paged_table(science_and_health_des_long)
+
+rmarkdown::paged_table(science_and_health_org_long)
+```
+
+In this format, the tags in the `des_facet` and `org_facet` columns can be analyzed. Alternatively, one could keep the nested data frame and un-nest the column that they wish to analyze.
+
+### Short Format
+
+For the short format, the `des_facet` and `org_facet` columns are unlisted and turned into a string in the data table. 
+
+```{r short-format}
+science_and_health <- rbind(science_data, health_data) %>%
+  select(web_section, title, abstract, url, "author" = byline, published_date, updated_date, des_facet, org_facet)
+
+############ unlisting des_facets #############
+des_facets <- list()
+
+for (i in 1:nrow(science_and_health)) {
+  
+  for (j in 1:length(unlist(science_and_health$des_facet[i]))) {
+  temp <- paste(unlist(science_and_health$des_facet[i]), collapse='; ')
+  
+  }
+  
+  des_facets <- append(des_facets, list(temp))
+}
+
+des_facets <- data.frame(des_facets)
+
+names(des_facets) <- c(1:length(names(des_facets)))
+
+des_facets <- des_facets %>%
+  pivot_longer(cols = names(des_facets), names_to = "article", values_to = "des_facet")
+
+science_and_health <- science_and_health %>%
+  mutate(des_facet = des_facets$des_facet)
+
+############ unlisting org_facets #############
+org_facets <- list()
+
+for (i in 1:nrow(science_and_health)) {
+  
+  for (j in 1:length(unlist(science_and_health$org_facet[i]))) {
+  temp <- paste(unlist(science_and_health$org_facet[i]), collapse='; ')
+  
+  }
+  
+  org_facets <- append(org_facets, list(temp))
+}
+
+org_facets <- data.frame(org_facets)
+
+names(org_facets) <- c(1:length(names(org_facets)))
+
+org_facets <- org_facets %>%
+  pivot_longer(cols = names(org_facets), names_to = "article", values_to = "org_facet")
+
+science_and_health <- science_and_health %>%
+  mutate(org_facet = org_facets$org_facet)
+
+rmarkdown::paged_table(science_and_health)
+```
+
+## Some Analysis
+
+#### What are the most common descriptive tags? {.tabset .tabset-fade .tabset-pills}
+
+The descriptive tags are in the `des_facet` column. For this, I will use the already un-nested `science_and_health_des_long` table.
+
+##### Table
+
+```{r des-facet}
+most_common_des <- science_and_health_des_long %>% 
+  count(des_facet) %>%
+  arrange(desc(n)) %>%
+  filter(n >= 5)
+  
+most_common_des %>%
+  knitr::kable(col.namesz = c("Descriptive Tag", "Number of Articles"))
+```
+
+##### Graph
+
+```{r graph-des-facets}
+most_common_des %>%
+  ggplot(aes(x = n, y = reorder(des_facet, n))) +
+    geom_bar(stat = "identity", fill = "steelblue4") +
+    geom_text(aes(label = n), position = position_stack(vjust = 0.9), fontface = 'bold', color = 'white') +
+    labs(title = "Most Common Descriptive Tags", x = "", y = "")
+```
+
+"your-feed-science" is the most commonly used tag. Most articles seem to be about Covid-19 and other diseases. 
+
+#### Which organizations are mentioned most? {.tabset .tabset-fade .tabset-pills}
+
+For this, I will use the already un-nested `science_and_health_org_long` table.
+
+##### Table
+
+```{r org-facet}
+most_common_org <- science_and_health_org_long %>% 
+  count(org_facet) %>%
+  arrange(desc(n)) %>%
+  filter(n > 1)
+  
+most_common_org %>%
+  knitr::kable(col.namesz = c("Organization", "Number of Articles"))
+```
+##### Graph
+
+```{r graph-org-facets}
+most_common_org %>%
+  ggplot(aes(x = n, y = reorder(org_facet, n))) +
+    geom_bar(stat = "identity", fill = "darkred") +
+    geom_text(aes(label = n), position = position_stack(vjust = 0.9), fontface = 'bold', color = 'white') +
+    labs(title = "Most Mentioned Organizations", x = "", y = "")
+```
+
+The FDA and CDC are the most mentioned organizations.
+
+## Conclusions
+
+The goal of this assignment was to in JSON data from the New York Times API and transform it into an R data frame. The "Tidying the Data" section provides three separate ways of organizing this data in an R data frame. 
+
+In order to access the NYT API, follow the steps listed [here](https://developer.nytimes.com/get-started) on their website. 
