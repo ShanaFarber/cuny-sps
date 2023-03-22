@@ -1,0 +1,219 @@
+---
+title: "DATA 605 - Homework 6"
+author: "Shoshana Farber"
+date: "March 5, 2023"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=80), tidy=TRUE)
+```
+
+### Question 1
+
+**A bag contains 5 green and 7 red jellybeans. How many ways can 5 jellybeans be withdrawn from the bag so that the number of green ones withdrawn will be less than 2?**
+
+G = green jellybean
+R = red jellybean
+
+5G + 7R = 12 jellybeans total
+
+If you want to know the number of ways that you can pick 5 jellybeans with less than 2 being green, that means the number of ways in which you can choose 0 or 1 green jellybean among 5 jellybeans picked. 
+
+**For 0 green jellybeans:** There are $7 \choose 5$ ways to pick only red jellybeans.
+
+**For 1 green jellybean:** There are $7 \choose 4$ ways of picking 4 red jellybeans and $5 \choose 1$ ways of picking a green jellybean.
+
+```{r}
+choose(7,5) + choose(5,1)*choose(7,4)
+```
+
+There are **196** ways in which you can choose 5 jellybeans with less than 2 being green. 
+
+### Question 2
+
+**A certain congressional committee consists of 14 senators and 13 representatives. How many ways can a subcommittee of 5 be formed if at least 4 of the members must be representatives?**
+
+S = # of senators = 14
+R = # of representatives = 13
+
+14S + 13R = 27 committee members
+
+At least 4 must be representatives, so the subcommittee must consist of 4 or 5 representatives.
+
+Similar to the above, there are $13 \choose 5$ ways to choose all representatives and $13 \choose 4$ * $14 \choose 1$ ways to choose 4 representatives and 1 senator.
+
+```{r}
+choose(13,5) + choose(13,4)*choose(14,1)
+```
+
+There are **11,297** ways of choosing a subcommittee with these requirements. 
+
+### Question 3
+
+**If a coin is tossed 5 times, and then a standard six-sided die is rolled 2 times, and finally a group of three cards are drawn from a standard deck of 52 cards without replacement, how many different outcomes are possible?**
+
+A coin has 2 sides and therefore 2 possible outcomes: Heads or Tails. If you toss the coin 5x, with two possible outcomes each time, there are $2^{5}$ possible outcomes.
+
+A die has six sides and therefore 6 possible outcomes: 1, 2, 3, 4, 5, or 6. If you roll the die twice, there are $6^{2}$ possible outcomes.
+
+A standard deck of cards has 52 cards. If you take 3 cards from the deck without replacement, there $(52)(51)(50)$ possible outcomes. 
+
+```{r}
+coin_toss_outcomes <- 2**5
+die_roll_outcomes <- 6**2
+card_deck_order <- 52*51*50
+
+coin_toss_outcomes*die_roll_outcomes*card_deck_order
+```
+
+There are **152,755,200** possible outcomes. 
+
+### Question 4
+
+**3 cards are drawn from a standard deck without replacement. What is the probability that at least one of the cards drawn is a 3? Express your answer as a fraction or a decimal number rounded to four decimal places.**
+
+The probability of at least one of the cards being a 3 is the same as the probability of all three cards being 3 plus the probability of two of the cards being a 3 plus the probability of only one card being a 3. Rather than computing all three of these probabilities, we can take 1 minus the probability that none of the cards drawn are a 3. Since we are working without replacement, this would be ${48 \over 52} * {47 \over 51} * {46 \over 50}$
+
+```{r}
+prob_no_three <- (48/52)*(47/51)*(46/50)
+
+round(1 - prob_no_three, 4)
+```
+
+The probability of drawing at least one 3 is about **0.2174** (or 21.47%).
+
+### Question 5
+
+**Lorenzo is picking out some movies to rent, and he is primarily interested in documentaries and mysteries. He has narrowed down his selections to 17 documentaries and 14 mysteries.**
+
+a) How many different combinations of 5 movies can he rent?
+  
+17D + 14M = 31 movies
+  
+There are $31 \choose 5$ = **`r format(choose(31,5), big.mark=",")`** ways in which he can rent movies.
+  
+b) How many different combinations of 5 movies can he rent if he wants at least 1 mystery?
+
+If he wants at least 1 mystery then he can have either 1, 2, 3, 4, or 5 mystery movies. 
+
+This would be ${14 \choose 5}{17 \choose 0} + {14 \choose 4}{17 \choose 1} + {14 \choose 3}{17 \choose 2} + {14 \choose 2}{17 \choose 3} + {14 \choose 1}{17 \choose 4}$
+
+```{r}
+choose(14,5)*choose(17,0) + choose(14,4)*choose(17,1) + choose(14,3)*choose(17,2) + choose(14,2)*choose(17,3) + choose(14,1)*choose(17,4)
+```
+
+There are **163,723** ways in which he can choose 5 movies if he wants at least 1 mystery. 
+
+This can also be done by subtracting the number of combinations of having 0 mystery movies from the above number for the total combinations he can have if he wants to choose 5 movies.
+
+```{r}
+total_combinations <- choose(31,5)
+no_mysteries <- choose(17,5)
+
+total_combinations - no_mysteries
+```
+
+### Question 6
+
+**In choosing what music to play at a charity fund raising event, Cory needs to have an equal number of symphonies from Brahms, Haydn, and Mendelssohn. If he is setting up a schedule of the 9 symphonies to be played, and he has 4 Brahms, 104 Haydn, and 17 Mendelssohn symphonies from which to choose, how many different schedules are possible? Express your answer in scientific notation rounding to the hundredths place.**
+
+4B + 104H + 17M = 125 symphonies
+
+There are 125 symphonies to choose 9 from. He needs an equal number from each composer so he needs 3 from each composer.
+
+If Cory were simply choosing songs to listen to and the order didn't matter, the answer would be that there are $4 \choose 3$ ways to choose from Brahms, $104 \choose 3$ ways to choose from Haydn, and $17 \choose 3$ ways to choose from Mendelssohn.
+
+Here, however, Cory is setting up a schedule, so the order in which he places the songs also matters. 
+
+```{r}
+brahms <- choose(4,3)
+haydn <- choose(104,3)
+mendelssohn <- choose(17,3)
+
+(choices <- brahms*haydn*mendelssohn)
+```
+
+There are $4.95 \times 10^{8}$ ways to choose the songs.
+
+Then there are $9!$ ways in which to order the songs:
+
+```{r}
+choices*factorial(9)
+```
+
+There are $1.80 \times 10^{14}$ ways to make the schedule.
+
+### Question 7
+
+**An English teacher needs to pick 13 books to put on his reading list for the next school year, and he needs to plan the order in which they should be read. He has narrowed down his choices to 6 novels, 6 plays, 7 poetry books, and 5 nonfiction books.**
+
+a) If he wants to include no more than 4 nonfiction books, how many different reading schedules are possible? Express your answer in scientific notation rounding to the hundredths place.
+
+6 novels + 6 plays + 7 poetry + 5 nonfiction = 24 books
+
+If you want to pick no more than 4 nonfiction books then you can either choose 0, 1, 2, 3, or 4 nonfiction books. You can more easily calculate this by first finding the amount of ways in which he can choose all 5 non-fiction and subtracting that from the total amount of ways he can choose from all plays and then multiplying that by $13!$ to order.
+
+```{r}
+total_combos <- choose(24,13)
+
+# choose 5 nonfiction and then 13-5=8 books from the remaining 19
+five_nonfic <- choose(5,5)*choose(19,8)
+
+factorial(13) * (total_combos - five_nonfic)
+```
+
+There are $1.51 \times 10^{16}$ ways to order the books if he wants at most 4 nonfiction.
+
+b) If he wants to include all 6 plays, how many different reading schedules are possible? Express your answer in scientific notation rounding to the hundredths place.
+
+If he wants to include all 6 plays then he will have 18 books left from which to choose an additional 7.
+
+```{r}
+factorial(13)*(choose(6,6)*choose(18,7))
+```
+
+There are $1.98 \times 10^{14}$ ways from in which he can order 13 books if he wants to include all 6 plays. 
+
+### Question 8
+
+**Zane is planting trees along his driveway, and he has 5 sycamores and 5 cypress trees to plant in one row. What is the probability that he randomly plants the trees so that all 5 sycamores are next to each other and all 5 cypress trees are next to each other? Express your answer as a fraction or a decimal number rounded to four decimal places.**
+
+5S + 5C
+
+To do this you need to find out the probability that the first 5 in the row are all the same of one type. By definition, the last 5 in the row will be all the same of the other type, as that is then the only type to choose from. 
+
+The type of the first tree doesn't matter. Once you have that one, you then calculate the probability that the next 4 trees match the first one. 
+
+```{r}
+# p 5 consecutive sycamores then 5 consecutive cypress
+(4/9)*(3/8)*(2/7)*(1/6)
+```
+
+The probability that all 5 sycamores are planted nest to each other and all 5 cypress are planted next to each other is **0.0079** (0.40%).
+
+### Question 9
+
+**If you draw a queen or lower from a standard deck of cards, I will pay you $4. If not, you pay me $16. (Aces are considered the highest card in the deck.)**
+
+a) Find the expected value of the proposition. Round your answer to two decimal places. Losses must be expressed as negative values.
+
+Cards higher than a queen are King and Ace. There are 4 kings and 4 aces.
+
+The expected value is $4*{44 \over 52} - 16*{8 \over 52}$.
+
+```{r}
+expected <- 4*(44/52) - 16*(8/52)
+
+expected
+```
+
+The expected value is **$0.92**. 
+
+b) If you played this game 833 times how much would you expect to win or lose? Round your answer to two decimal places. Losses must be expressed as negative values. 
+
+```{r}
+expected*833
+```
+
+You would expected to win **$768.92**.

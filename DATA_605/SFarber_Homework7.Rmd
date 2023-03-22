@@ -1,0 +1,123 @@
+---
+title: "DATA 605 - Homework 7"
+author: "Shoshana Farber"
+date: "March 12, 2023"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**1.** Let $X_{1}$, $X_{2}$, . . . , $X_{n}$ be n mutually independent random variables, each of which is uniformly distributed on the integers from 1 to k. Let Y denote the minimum of the $X_{i}$’s. Find the distribution of Y.
+
+For $Y = 1$: $P(Y=1)$ = ${{k^{n} - (k-1)^{n}} \over k^{n}}$ where $k^n$ is the total number of possibilities and $(k-1)^{n}$ is the possibilities where none of the $X_{i}$ are 1. 
+
+For $Y = 2$: For $P(Y=2)$ = ${{(k-2)^{n} - (k-1)^{n} -[{k^{n} - (k-1)^{n}]}} \over k^{n}} = {{(k-1)^{n} - (k-2)^{n}} \over k^{n}}$. 
+
+Following this pattern till $Y = y$:
+
+$$
+P(Y = y) = {{(k-y+1)^{n} - (k-y)^{n}} \over k^{n}} \space for \space 1<y<k
+$$ 
+
+
+**2.** Your organization owns a copier (future lawyers, etc.) or MRI (future doctors). This machine has a manufacturer’s expected lifetime of 10 years. This means that we expect one failure every ten years.
+
+a) What is the probability that the machine will fail after 8 years? Provide also the expected value and standard deviation. Model as a **geometric**. (Hint: the probability is equivalent to not failing during the first 8 years.)
+
+_**Formula for geometric:**_ $P(X = x) = (1-p)^{x-1} p$
+
+```{r}
+x <- 8
+p_fail <- 1/10
+
+1 - pgeom(x-1, p_fail)
+```
+
+$E(X) = p^{-1}$
+
+```{r}
+1/p_fail # expected value
+```
+
+$\sigma^2 = {1-p \over p^2}$
+
+```{r}
+var <- (1-p_fail) / (p_fail^2)
+
+sqrt(var) #sd
+```
+
+The probability the machine fails after 8 years is **0.43 (43%)**. The expected failure time is **10 years**. The standard deviation is **9.49**. 
+
+b) What is the probability that the machine will fail after 8 years?. Provide also the expected value and standard deviation. Model as an **exponential**. 
+
+_**Formula for exponential:**_ $P(X = x) = {1 \over \theta} e^{-x \over \theta}$.
+
+$\theta = {1 \over a}$
+
+```{r}
+a <- 1/10
+x <- 8
+
+1 - pexp(x, a)
+```
+
+$E(X) = \mu = \sigma$ for the exponential distribution. 
+
+```{r}
+theta <- 1/a
+
+theta
+```
+
+The expected failure time is 10 years and the standard deviation is 10 years. 
+
+c) What is the probability that the machine will fail after 8 years?. Provide also the expected value and standard deviation. Model as a **binomial**. (Hint: 0 success in 8 years) 
+
+_**Formula for binomial:**_ $P(X = x) = {n \choose x} p^{x} q^{n-x}$
+
+```{r}
+x <- 0
+n <- 8
+p_fail = 1/10
+
+pbinom(x, n, p_fail)
+```
+
+$E(X) = \mu = np$
+$\sigma^{2} = npq$
+
+```{r}
+n*p_fail
+
+n*p_fail*(1-p_fail)
+```
+
+The probability the machine fails after 8 years is **0.43 (43%)**. The expected number of failures is **0.8**. The standard deviation is **0.72**.
+
+d) What is the probability that the machine will fail after 8 years?. Provide also the expected value and standard deviation. Model as a **Poisson**. 
+
+_**Formula for binomial:**_ $P(X = x) = {{\lambda^{x} e^-\lambda} \over x!}$
+
+```{r}
+a <- 1/10
+t <- 8
+
+lambda <- a*t
+
+ppois(0, lambda)
+```
+
+$E(X) = \mu = lambda$
+$\sigma = \sqrt{\lambda}$
+
+```{r}
+lambda
+
+sqrt(lambda)
+```
+
+The probability the machine fails after 8 years is **0.45 (45%)**. The expected number of failures is **0.8** and the standard deviation is **0.894**. 
+

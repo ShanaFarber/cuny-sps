@@ -1,0 +1,322 @@
+---
+title: "DATA 605 - Homework 5"
+author: "Shoshana Farber"
+date: "February 26, 2023"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=80), tidy=TRUE)
+```
+
+**1. (Bayesian).** A new test for multinucleoside-resistant (MNR) human immunodeficiency virus type 1 (HIV-1) variants was recently developed. The test maintains **96%** sensitivity, meaning that, for those with the disease, it will correctly report “positive” for 96% of them. The test is also 98% specific,
+meaning that, for those without the disease, **98%** will be correctly reported as “negative.” MNR HIV-1 is considered to be rare (albeit emerging), with about a **.1%** or .001 prevalence rate. 
+
+a) Given the prevalence rate, sensitivity, and specificity estimates, what is the probability that an individual who is reported as positive by the new test actually has the disease? 
+
+```{r pos-has-disease}
+# prob has disease given test is pos
+# P(A|B) = P(has disease | test is pos)
+sensitivity <- 0.96
+specificity <- 0.98
+prev_rate <- 0.001
+
+# P(A|B) = P(B|A)*P(A) / (P(B|A)*P(A) + P(B|not A)*P(not A))
+prob_pos_has_disease <- sensitivity*prev_rate / ((sensitivity*prev_rate) + ((1-specificity)*(1-prev_rate)))
+
+prob_pos_has_disease
+```
+
+The probability that a person has the disease given that the test is positive is **0.0458 (4.58%)**.
+
+b) If the median cost (consider this the best point estimate) is about \$100,000 per positive case total and the test itself costs $1,000 per administration, what is the total first-year cost for treating 100,000 individuals?
+
+```{r first-year-cost}
+cost_per_pos <- 100000
+cost_per_admin <- 1000
+patients <- 100000
+
+# positive case total = actual positive + false positive
+pos_cases <- patients*prev_rate*sensitivity + (patients*(1-specificity)*(1-prev_rate))
+
+first_year_cost <- (cost_per_admin*patients) + (pos_cases*cost_per_pos)
+
+first_year_cost
+```
+
+The total first year cost for 100,000 individuals is **$309,400,000.00**. 
+
+**2. (Binomial).** The probability of your organization receiving a Joint Commission inspection in any given month is **.05**. 
+
+a) What is the probability that, after 24 months, you received exactly 2 inspections? 
+
+$P(X = 2)$
+
+```{r}
+dbinom(2,24,0.05)
+```
+
+The probability of receiving exactly 2 inspections in 24 months is **22%**.
+
+b) What is the probability that, after 24 months, you received 2 or more inspections? 
+
+$P(X \ge 2) = 1 - P(X < 2) = 1 - P(X \le 1)$
+
+```{r}
+1 - pbinom(1,24,0.05)
+```
+
+The probability of having 2 or more inspections in 24 months is **34%**. 
+
+c) What is the probability that your received fewer than 2 inspections? 
+
+$P(X < 2) = P(X \le 1)$
+
+```{r}
+pbinom(1,24,0.05)
+```
+
+The probability of receiving less than 2 inspections in 24 months is **66%**.
+
+d) What is the expected number of inspections you should have received? 
+
+$P(X) \times n$
+
+```{r}
+n = 24
+p = 0.05
+
+n*p
+```
+
+The expected number of inspections is **1.2**. 
+
+e) What is the standard deviation?
+
+$\sigma^{2} = npq \Longrightarrow \sigma = \sqrt{npq}$
+
+
+```{r}
+q = 1 - p
+
+sqrt(n*p*q)
+```
+
+The standard deviation is **1.07**. 
+
+**3. (Poisson).** You are modeling the family practice clinic and notice that patients arrive at a rate of **10 per hour**. 
+
+a) What is the probability that exactly 3 arrive in one hour? 
+
+$P(X = 3)$
+
+```{r}
+a = 10
+t = 1
+
+lambda = a*t
+
+dpois(3, lambda)
+```
+
+The probability that exactly 3 patients arrive in 1 hour is **0.76%**.
+
+b) What is the probability that more than 10 arrive in one hour? 
+
+$P(X > 10) = 1 - P(X \le 10)$
+
+```{r}
+1 - ppois(10, lambda)
+```
+
+The probability that more than 10 arrive in one hour is **41.7%**. 
+
+c) How many would you expect to arrive in 8 hours? 
+
+```{r}
+# a = rate per hour
+a * 8
+```
+
+You would expect 80 patients in 8 hours. 
+
+d) What is the standard deviation of the appropriate probability distribution? 
+
+$\sigma = \sqrt{\lambda}$
+
+```{r}
+sqrt(lambda)
+
+t = 8
+sqrt(a*t)
+```
+
+The standard deviation is **3.16** for the one hour instance and **8.94** for the 8 hour instance. 
+
+e) If there are three family practice providers that can see 24 templated patients each day, what is the percent utilization and what are your recommendations?
+
+```{r}
+hrs_limit <- 24
+t <- 8
+providers <- 3
+
+((a*t)/(hrs_limit*providers)) * 100
+```
+
+The percent utilization is **111%**. I would recommend having more providers so that demand can be met. 
+
+**4. (Hypergeometric).** Your subordinate with **30** supervisors was recently accused of favoring nurses. **15** of the subordinate’s workers are nurses and **15** are other than nurses. As evidence of malfeasance, the accuser stated that there were **6** company-paid trips to Disney World for which everyone was eligible. The supervisor sent **5 nurses** and **1 non-nurse**. 
+
+a) If your subordinate acted innocently, what was the probability he/she would have selected five nurses for the trips? 
+
+```{r}
+nurses <- 15
+non_nurses <- 15
+
+slots <- 6
+
+dhyper(5, nurses, non_nurses, slots)
+```
+
+If he/she was not favoring nurses, the probability of choosing 5 nurses for the trip would have been **7.59%**.
+
+b) How many nurses would we have expected your subordinate to send? How many non-nurses would we have expected your subordinate to send?
+
+```{r}
+p_nurse = 15/30
+p_non_nurse = 15/30
+
+slots*p_nurse
+slots*p_non_nurse
+```
+
+You would have expected them to send **3** nurses and **3** non-nurses. 
+
+**5. (Geometric).** The probability of being seriously injured in a car crash in an unspecified location is about **.1% per hour**. A driver is required to traverse this area for **1200 hours** in the course of a **year**. 
+
+a) What is the probability that the driver will be seriously injured during the course of the year? In the course of 15 months? 
+
+```{r}
+p_injured <- 0.001
+
+hours_per_year <- 1200
+hours_per_month <- hours_per_year / 12
+
+pgeom(hours_per_year, p_injured)
+
+pgeom(hours_per_month*15, p_injured)
+```
+
+The probability of the driver being seriously injured within a year is **69.9%** and within 15 months is **77.7%**. 
+
+b) What is the expected number of hours that a driver will drive before being seriously injured?
+
+```{r}
+1/p_injured
+```
+
+The expected number of hours a driver will drive before being seriously injured is **1,000** hours. 
+
+c) Given that a driver has driven 1200 hours, what is the probability that he or she will be injured in the next 100 hours? 
+
+```{r}
+pgeom(100, p_injured)
+```
+
+The probability the driver will be injured in the next 100 hours given that they already drove 1200 hours is **9.61%**. 
+
+**6.** You are working in a hospital that is running off of a primary generator which fails about **once in 1000 hours**. 
+
+a) What is the probability that the generator will fail more than twice in 1000 hours? 
+
+$P(X > 2) = 1 - P(X \le 2)$
+
+```{r}
+a = 1/1000
+t = 1000
+
+lambda = a*t
+
+1 - ppois(2,lambda)
+```
+
+The probability of the generator failing more than twice in 1,000 hours is **8.03%**. 
+
+b) What is the expected value?
+
+$E(X) = \lambda$
+
+```{r}
+lambda
+```
+
+It is expected that the generator will fail **once** in 1,000 hours. 
+
+**7.** A surgical patient arrives for surgery precisely at a given time. Based on previous analysis (or a lack of knowledge assumption), you know that the waiting time is uniformly distributed from **0 to 30 minutes**.
+
+a) What is the probability that this patient will wait more than 10 minutes? 
+
+$P(X > 10) = 1 - P(X \le 10)$
+
+```{r}
+1 - punif(10, 0, 30)
+```
+
+The probability a patient will wait more than 10 minutes is **66.7%**.
+
+b) If the patient has already waited 10 minutes, what is the probability that he/she will wait at least another 5 minutes prior to being seen? 
+
+```{r}
+1 - punif(15, 10, 30) 
+```
+
+The probability the patient will wait at least another 5 minutes given they already waited 10 minutes is **75%**. 
+
+c) What is the expected waiting time?
+
+$E(X) = \mu$ = $\alpha + \beta \over 2$
+
+```{r}
+(0 + 30) /2
+```
+
+The expected waiting time is **15 minutes**. 
+
+**8.** Your hospital owns an old MRI, which has a manufacturer’s lifetime of about **10 years** (expected value). Based on previous studies, we know that the failure of most MRIs obeys an exponential distribution.
+
+a) What is the expected failure time? 
+
+The expected failure time is **10 years**. 
+
+b) What is the standard deviation? 
+
+```{r}
+E_X = 10
+
+sqrt(E_X)
+```
+
+The standard deviation is **3.16**. 
+
+c) What is the probability that your MRI will fail after 8 years? 
+
+$P(X > 8) = 1 - P(X \le 8)$
+
+```{r}
+a = 1/10
+
+1 - pexp(8, a)
+```
+
+The probility the machine will fail after 8 years is **44.9%**. 
+
+d) Now assume that you have owned the machine for 8 years. Given that you already owned the machine 8 years, what is the probability that it will fail in the next two years? 
+
+```{r}
+pexp(2, a)
+```
+
+The probability the machine will fail in the next 2 years given you already owned it for 8 years is **18.1%**. 
+
