@@ -1,0 +1,161 @@
+---
+title: "DATA 605 - Homework 4"
+author: "Shoshana Farber"
+date: "February 19, 2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(jpeg)
+library(EBImage)
+library(OpenImageR)
+```
+
+**With the attached data file, build and visualize eigenimagery that accounts for 80% of the variability. Provide full R code and discussion.**
+
+## Loading in the Images
+
+```{r load-data}
+files <- list.files('C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_605/Eigenshoes', pattern = '\\.jpg') # grab each image name
+
+num_shoes = length(files)
+
+# creating a list of paths to each image
+paths <- list()
+
+for (i in 1:num_shoes) {
+    paths[i] <- paste0('C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_605/Eigenshoes/', files[i])
+}
+
+paths <- unlist(paths)
+```
+
+## Load the Data into an Array and Vectorize
+
+Since the images are very large, we resize each image according to a chosen scale and then load each image into an array of scaled dimension. 
+
+```{r shoe-array}
+height <- as.numeric(dim(readJPEG(paths[1], native=T))[1])
+width <- as.numeric(dim(readJPEG(paths[1], native=T))[2])
+scale <- 20  # scale the images so they are not too large
+
+scaled_dim <- c(height/scale, width/scale, 3)
+
+# initializing an array of just 0s
+# array is initialized to the scaled dimensions
+im <- array(rep(0,num_shoes*height/scale*width/scale*3), dim=c(num_shoes, height/scale, width/scale, 3))
+
+# reading each image into the array, resized to new dimensions
+for (i in 1:num_shoes) {
+  temp <- resize(readJPEG(paths[i]),height/scale, width/scale) # resize to new dimensions
+  
+  im[i,,,] <- array(temp, dim=c(1, height/scale, width/scale, 3))
+}
+```
+
+We then create a matrix of the RGB components of each image by looping through the array of scaled images. Within the loop, the R, G, and B components of each image are converted to vectors. These vectors are then concatenated and transposed and added into the matrix of images. 
+
+```{r shoe-matrix-rgb}
+# initializing a matrix of 0s
+flat <- matrix(0, num_shoes, prod(dim(im))) 
+
+# extracting the RGB components from each image and loading into the matrix
+for (i in 1:num_shoes) {
+  r <- as.vector(im[i,,,1]) 
+  g <- as.vector(im[i,,,2])
+  b <- as.vector(im[i,,,3])
+  
+  # 17 x 382,500 matrix of the vectorized RGB components
+  flat[i,] <- t(c(r, g, b))
+}
+```
+
+We then create a 382,500 x 17 matrix by taking the transpose of the previous matrix. Each column consists of the vectorized RGB components of the image. 
+
+```{r shoe-df}
+shoes <- as.data.frame(t(flat)) # 382,500 x 17 matrix of vectorized RGB components
+```
+
+## Creating a Function to Plot the Images
+
+```{r}
+plot_jpeg <-  function(path) {
+  jpg <- readJPEG(path, native=T) # read the file from the given path
+  
+  res <- dim(jpg)[2:1] # get the resolution, [x, y] for x and y limits
+  
+  plot(1,1,xlim=c(1,res[1]),ylim=c(1,res[2]),asp=1,type='n',xaxs='i',yaxs='i',xaxt='n',yaxt='n',xlab='',ylab='',bty='n') # initialize empty plot
+  
+  rasterImage(jpg,1,1,res[1],res[2]) # place the image into the plot
+}
+```
+
+## Plotting the Shoes
+
+```{r}
+par(mfrow=c(4,5), mai=c(.3,.3,.3,.3))
+
+for (i in 1:num_shoes) {
+  plot_jpeg(writeJPEG(im[i,,,])) # apply plot_jpeg function
+}
+```
+
+# Creating Eigenshoes
+
+## Center and Scale
+
+```{r}
+scaled_shoes <- scale(shoes, center = TRUE, scale = TRUE)
+```
+
+## Calculating Covariance (Correlation)
+
+```{r}
+Sigma_ <- cor(scaled_shoes) # covariance matrix
+```
+
+## Getting the Eigencomponents
+
+```{r}
+shoe_eigen <- eigen(Sigma_) # get the eigenvalues and eigenvectors
+
+# retrieve eigenvalues and eigenvectors
+eigenvalues <- shoe_eigen$values
+eigenvectors <- shoe_eigen$vectors
+```
+
+## Choosing the Number of Principal Components
+
+```{r}
+cumsum(eigenvalues) / sum(eigenvalues)
+```
+
+We can already account for 80% of the variability within the first three images.
+
+## Generating Eigenshoe
+
+```{r eigenshoes}
+scaling <- diag(eigenvalues[1:3]^(-1/2)) / (sqrt(nrow(scaled_shoes)-1)) # correcting for unit length using scale factor from above
+
+eigenshoes <- scaled_shoes%*%eigenvectors[,1:3]%*%scaling # transforming eigenvectors from Sigma_
+
+par(mfrow=c(2,3))
+
+imageShow(array(eigenshoes[,3], scaled_dim))
+```
+
+Eigenshoe accounts for approximately 85% of the variability.
+
+## New Data Set
+
+```{r}
+shoe_data <-  t(t(eigenshoes)%*%scaled_shoes)
+```
+
+### Sources
+
+https://rpubs.com/R-Minator/eigenshoes
+
+https://rpubs.com/dherrero12/543854
