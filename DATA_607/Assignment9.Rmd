@@ -17,7 +17,7 @@ library(dotenv)
 load_dot_env(".env")
 ```
 
-**The New York Times web site provides a rich set of APIs, as described here: https://developer.nytimes.com/apis. You’ll need to start by signing up for an API key. **
+**The New York Times web site provides a rich set of APIs, as described here: https://developer.nytimes.com/apis. You’ll need to start by signing up for an API key.**
 
 **Your task is to choose one of the New York Times APIs, construct an interface in R to read in the JSON data, and transform it into an R DataFrame.**
 
@@ -161,7 +161,7 @@ most_common_des <- science_and_health_des_long %>%
   filter(n >= 5)
   
 most_common_des %>%
-  knitr::kable(col.namesz = c("Descriptive Tag", "Number of Articles"))
+  knitr::kable(col.names = c("Descriptive Tag", "Number of Articles"))
 ```
 
 ##### Graph
@@ -189,7 +189,7 @@ most_common_org <- science_and_health_org_long %>%
   filter(n > 1)
   
 most_common_org %>%
-  knitr::kable(col.namesz = c("Organization", "Number of Articles"))
+  knitr::kable(col.names = c("Organization", "Number of Articles"))
 ```
 ##### Graph
 
