@@ -1,0 +1,195 @@
+---
+title: "DATA 607 - Tidyverse CREATE"
+author: "Shoshana Farber"
+date: "April 16, 2023"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo = T, message=F, warning=F)
+```
+
+The goal of this project is to create a vignette of one or more features of a TidyVerse package in R. For this project, I will be focusing on some of the functions of the **`tidyr`** package and I will also use **`ggplot2`** to demonstrate how these transformations can be helpful. 
+
+## Loading the Libraries
+
+```{r load-libraries}
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+library(shiny)
+```
+
+The **`tidyr`** library provides functions to tidy data while the **`ggplot2`** library provides functions to plot and visualize data. We will also utilize some functions from **`dplyr`** to further manipulate our data frame. 
+
+In order to load these libraries, you will need to first install the packages. You can do this by using `install.packages("tidyr")`, `install.packages("ggplot2")`, and `install.packages("dplyr")`. You can also access these libraries by installing and using the **`tidyverse`** package which includes these as well as other packages. 
+
+## Loading the Data
+
+The data set that we will focus on includes historical Elo ratings and game scores for NBA teams from 1947 till 2023. The data set was taken from [FiveThirtEight.com](https://data.fivethirtyeight.com/) and can be accessed [here](https://github.com/fivethirtyeight/data/tree/master/nba-forecasts) by downloading the `nba_elo.csv` file. 
+
+```{r load-data}
+nba <- read.csv(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/Tidyverse_CREATE/nba_elo.csv"))
+```
+
+Let's take a look at the data:
+
+```{r}
+rmarkdown::paged_table(nba)
+```
+
+There are 73,335 rows and 27 columns in this data set. 
+
+Each row constitutes a game played between two teams. The observations from these games can be seen by looking at the column names. 
+
+```{r}
+names(nba)
+```
+
+Five Thirty Eight uses this data set to predict NBA season outcomes. According to their explanation online of [how their predictions work](https://fivethirtyeight.com/methodology/how-our-nba-predictions-work/), they began by using the Elo ratings for each team throughout history. They later realized that the team Elo rating did not factor for player skill and lacked the ability to predict based on player injuries, trades, or signings. In 2015, they came up with a new system, the "CARM-Elo" which factored in CARMELO player projections. In 2019 they created a new metric for player rating, the RAPTOR metric, which is what they currently use. 
+
+```{r}
+summary(nba)
+```
+
+We can see from the summary that majority of the ratings are missing for the "carm-elo" and "raptor" columns, as these were implemented for later seasons. We will therefore choose to focus on the "elo" and "score" columns for this assignment. 
+
+```{r filter}
+nba_filtered <- nba |>
+  select(date, season, team1, team2, elo1_pre, elo2_pre, elo1_post, elo2_post, score1, score2)
+```
+
+## Transforming our Data using TidyR
+
+Each row of the data set includes metrics for both teams that played against each other in a game. If we wanted to graph the Elo ratings or scores for a specific team over time, we would need to have the metrics for this team in a single column. 
+
+### Reshaping Data
+
+To do this, we will use `pivot_longer()` to expand the data frame. The basic structure for `pivot_longer()` is as follows: `pivot_longer(data, cols, names_to = "names", values_to = "values")`. 
+
+**Arguments:**
+
+- `data` - the data frame which is being transformed
+- `cols` - the columns which are being collapsed into the 
+- `names_to` - a column for which the column names will be placed into (you supply the name for this column)
+- `values_to` - a column for which the values of each selected column will be placed (you supply the name for this column)
+
+When using `pivot_longer()`, the values from other columns will be duplicated the amount of times for each column that is being collapsed into the new columns. 
+
+### Uniting Cells
+
+Before we use `pivot_longer()`, let's use **`tidyr`**'s `unite()` function to join the columns pertaining to each team into a single column for each team. In doing this, we can easily expand all columns without having to pivot multiple times, create data frames for each separate value to then combine, or running into duplication issues. 
+
+The basic syntax for `unite()` is as follows: `unite(data, col, sep = "_")`
+
+**Arguments:** 
+
+- `data` - the data frame and columns which are being combined (list first the data frame and then the columns)
+- `col` - a column name to which the combined columns will be assigned
+- `sep` - a separator to use between columns
+
+Generally, the columns can be called in any order you wish and you can use any character, numeric, or symbol as your separator (or even nothing). For this assignment, we will be separating the columns after we pivot, so we will use the same order of columns and we will use a semicolon as our separator so it is unique from any other value. 
+
+```{r unite}
+nba_united <- nba_filtered |>
+  unite(team1,elo1_pre,elo1_post,score1, col = "team1", sep=";") |>
+  unite(team2,elo2_pre,elo2_post,score2, col = "team2", sep=";")
+
+rmarkdown::paged_table(nba_united)
+```
+
+We can now use `pivot_longer()` to expand this data frame. 
+
+```{r pivot-longer}
+nba_longer <- nba_united |>
+  pivot_longer(cols = c(team1, team2),
+               names_to = "team",
+               values_to = "stats")
+
+rmarkdown::paged_table(nba_longer)
+```
+
+We now have a data frame which a row for each team from each game and their stats. 
+
+### Separating Columns
+
+Let's now separate the stats back into their original columns using the `separate()` function. The basic syntax for `separate()` is as follows: `separate(data, col, into, sep = "_")`.
+
+**Arguments:** 
+
+- `data` - the data frame 
+- `col` - the column which is being separated
+- `into` - a vector of names to assign for each new column
+- `sep` - the separator by which to split the columns
+
+Keep in mind that the column created from `unite()` is now a character vector. The original data types are, therefore, not preserved and we will need to recast these columns if we wish to perform analysis on these numbers. To do this, we will use **`dplyr`**'s `mutate()` function to recast these columns to numeric.
+
+```{r separate}
+nba_final <- nba_longer |>
+  separate(stats, into = c("team_abr", "pre_elo", "post_elo", "score"), sep=";") |>
+  mutate(pre_elo = as.numeric(pre_elo),
+         post_elo = as.numeric(post_elo),
+         score = as.numeric(score))
+
+rmarkdown::paged_table(nba_final)
+```
+
+## Utilizing Our New Table
+
+We can now plot the change in Elo ratings for teams over time. 
+
+First, lets take the average Elo rating for each team for each season. 
+
+```{r average-elo}
+average_elo <- nba_final |>
+  group_by(season, team_abr) |>
+  summarize(avg_pre_elo = mean(pre_elo),
+            avg_post_elo = mean(post_elo)) |>
+  ungroup()
+
+rmarkdown::paged_table(average_elo)
+```
+
+Now let's use `ggplot()` to graph the Elo ratings for the current top rated teams according to Five Thirty Eight's current ratings: Boston Celtics, Philadelphia 76ers, Denver Nuggets, Milwaukee Bucks. We will use the pre game Elo ratings for this. 
+
+The data set from Five Thirty Eight only used the team abbreviations. For this, I chose to join the final data table to a table of the actual NBA team names found [here](https://en.wikipedia.org/wiki/Wikipedia:WikiProject_National_Basketball_Association/National_Basketball_Association_team_abbreviations). 
+
+```{r avg-elo}
+team_names <- read.csv(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/Tidyverse_CREATE/NBA_teams.csv"))
+
+# only include teams that are in the NBA
+average_elo <- average_elo |>
+  right_join(team_names, by = "team_abr")
+
+average_elo |>
+  filter(team_name %in% c("Boston Celtics", "Philadelphia 76ers", "Denver Nuggets", "Milwaukee Bucks")) |>
+  ggplot(aes(x = season, y = avg_pre_elo, color = team_name)) +
+  geom_line() +
+  labs(title = "Average Pre Game Elo Rating Over Time", x = "Season", y = "Average Pre Elo Rating")
+```
+
+We can also plot the change in Elo ratings for each team based on the date of the game to see how their actual Elo rating changed overtime. Let's do this for the Boston Celtics. 
+
+```{r}
+nba_final_names <- nba_final |>
+  right_join(team_names)
+
+nba_final_names |>
+  filter(team_name %in% c("Boston Celtics", "Philadelphia 76ers", "Denver Nuggets", "Milwaukee Bucks")) |>
+  ggplot(aes(x = season, y = pre_elo)) +
+  geom_line() +
+  facet_wrap(~team_name) +
+  labs(title = "Pre Game Elo Rating Over Time", x = "Season", y = "Pre Elo Rating")
+```
+
+## Conclusion
+
+Tidy data is essential for effective data analysis as it allows for efficient and accurate data manipulation, transformation, and visualization. The principles of tidy data, such as having each variable in a separate column, each observation in a separate row, and having a single type of data in each column, ensure that data is organized in a way that facilitates easy analysis.
+
+The **`tidyr`** package in R provides a powerful set of tools for tidying messy data and transforming it into a tidy format. The package offers functions for pivoting, gathering, and separating data, making it easier to clean and manipulate data for analysis. The **`tidyr`** package, when used in conjunction with other data manipulation packages in R, allows for efficient and streamlined data cleaning and analysis.
+
+In this project, we explored some of the functions of the **`tidyr`** package, including `pivot_longer()`, `unite()`, and `separate()`. These are not only helpful for tidying data, but also for manipulating tidy data into a new format that works better for the purposes of a specific analysis.
+
+Other functions of **`tidyr`** include `pivot_longer()` which works in the reverse of `pivot_longer()` to widen data sets, and functions to handle missing values such as `fill()`, `drop_na()`, and `replace_na()`. 
+
+Explanation and syntax for further **`tidyr`** functions can be found [here](https://cran.r-project.org/web/packages/tidyr/tidyr.pdf). 
