@@ -1,0 +1,49 @@
+---
+title: "DATA 607 - Discussion 11"
+author: "Shoshana Farber"
+date: "2023-04-18"
+output: html_document
+---
+
+## Discussion Prompt
+
+Your task is to analyze an existing recommender system that you find interesting.  You should:
+
+1. Perform a Scenario Design analysis as described below. Consider whether it makes sense for your selected recommender system to perform scenario design twice, once for the organization (e.g. Amazon.com) and once for the organization's customers.
+2. Attempt to reverse engineer what you can about the site, from the site interface and any available information that you can find on the Internet or elsewhere.
+3. Include specific recommendations about how to improve the site's recommendation capabilities going forward. 
+4. Create your report using an R Markdown file, and create a discussion thread with a link to the GitHub repo where your Markdown file notebook resides.  You are not expected to need to write code for this discussion assignment.
+
+## Netflix Recommender System
+
+### Scenario Design Analysis
+
+Scenario design analysis consists of a three-question framework:
+
+1. Who are your target users?
+2. What are their key goals?
+3. How can you help them accomplish these goals?
+
+Netflix's target users are people of all ages all around the world. The goal of these users is to find something interesting to watch. Netflix can help users accomplish their goals by recommending movies or TV shows that either match their typical watching preferences or that other people with similar watching patterns have also watched. They also employ the use of filters which allow users to zone in on specific genres or categories. 
+
+This same scenario design works to benefit the company. When users are presented with TV and movie that they will be interested in watching, they will be more likely to subscribe and renew their subscriptions. Netflix also produces their own movies and shows, and they can use these recommendations to see what combinations of genres and themes people are interested in and to know which movies and TV shows are popular enough to continue to produce. 
+
+### Reverse Engineering
+
+Netflix uses a variety of algorithms for their recommendation system. They use a row-based ranking system where users are presented with rows that are grouped by a similar theme. Based on a user's preferences and watching history, these rows will be ordered in a way in which the strongest recommendations will appear most visibly (i.e. the upper rows towards the left hand side). Based on user data, Netflix can refine these recommendations by seeing which rows or recommendations the user scrolls past. Rows can be ordered based on popularity or based on how similar the recommendations are to previously watched items. 
+
+Netflix not only groups these rows by genre, they also provide rows with catered suggestions based on previously watched movies or films. Their "Because you watched" sections utilize an item-item similarity matrix to provide users with similar movies or shows to what they have already watched. They also have "Trending Now" and "Popular" sections to present users with current top-rated items. 
+
+More information on how the Netflix recommender system works can be found [here](https://towardsdatascience.com/deep-dive-into-netflixs-recommender-system-341806ae3b48). 
+
+### Possible Improvements
+
+In my opinion, one of the best features of Netflix is the way that the program can be set up to have multiple profiles so that each user within a family can have their own personalized recommendations based on their specific tastes, without getting diluted or influenced by someone else's watching preferences. However, if a family decides they would like to have a movie night and they want to rely on Netflix's recommendations for a movie they will all enjoy, choosing to watch on one person's profile will only yield recommendations catered towards that person's tastes, and will not take into account anyone else's preferences. It would be interesting if Netflix could somehow take into account all the preferences across profiles so users can enjoy a movie based on multiple preferences.
+
+Also, in my personal experience, oftentimes Netflix will suggest items based on popularity and they will continue to suggest those same options without really providing anything new. Because of this, I find I will often scroll through the options without actually finding anything I want to watch. Netflix currently has the option to rate movies based on "I like this", "I don't like this", and "I love this" which will tell Netflix whether or not to still recommend a specific title. I think this can be improved by having a "show less like this" option to tell Netflix that you do not want certain types of movies or shows to be suggested. 
+
+I have also seen many discussions online where people have expressed that they feel that Netflix is focusing too much on new and popular items, rather than presenting them with options that actually fit their preferences. Netflix has thousands of movies on their platform and yet it seems to many that only a small percentage actually presents itself within the recommendations. I think Netflix can also focus less on popular titles and more on pinpointing similarities to provide recommendations that are more catered to specific individuals. 
+
+### Conclusion
+
+Netflix uses a variety of algorithms in their recommendation system to create somewhat personalized recommendations for specific users. This helps both the user to find watching option that they are interested in and the company to retain users based on satisfaction. However, many people still express frustration in Netflix's algorithm and its ability to present them with options they actually want to watch, so there is definitely still room for improvement. 
