@@ -1,0 +1,126 @@
+---
+title: "EC 5 - Recommender Systems"
+author: "Shoshana Farber"
+date: "April 25, 2023"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(DBI)
+library(dbplyr)
+library(tidyverse)
+library(RPostgres)
+library(dotenv)
+
+load_dot_env(".env")
+```
+
+The goal of this project is to implement a Global Baseline Estimate recommendation system in R based on movie ratings. This is an extension of assignment 2, where movie ratings were collected from different individuals. 
+
+For this, we will use the ratings collected in assignment 2 by connecting to the SQL database in which they are stored. 
+
+## Connecting to PostgreSQL Database
+
+```{r}
+con <- dbConnect(
+  Postgres(), 
+  host = "localhost", 
+  port = 5432,
+  user = "postgres",
+  password = Sys.getenv("SQL_DB_PASS"), 
+  dbname = "cuny-sps"
+)
+```
+
+## Loading the Databases {.tabset .tabset-fade .tabset-pills}
+
+```{r load-tables}
+movie_ratings <- dbGetQuery(con, "SELECT * FROM movie_ratings")
+raters <- dbGetQuery(con, "SELECT * FROM raters")
+movies <- dbGetQuery(con, "SELECT * FROM movies")
+```
+
+### Movie Ratings Table
+
+```{r movie-ratings}
+rmarkdown::paged_table(movie_ratings)
+```
+
+### Raters Table
+
+```{r movie-raters}
+rmarkdown::paged_table(raters)
+```
+
+### Movies Table
+
+```{r movies}
+rmarkdown::paged_table(movies)
+```
+
+## Join Tables
+
+To implement the recommender system, I will first join the tables together based on `movieID` and `raterID`. 
+
+```{r join-tables}
+movie_ratings_full <- movie_ratings |>
+  left_join(movies, by = "movieid") |>
+  left_join(raters, by = "raterid") |>
+  select("rater" = name, movie_title, rating) 
+
+rmarkdown::paged_table(movie_ratings_full)
+```
+
+## Building the System
+
+We will use the following formula to calculate the predicted ratings for each rater: **Global Baseline Estimate = Mean Movie Rating + Movie's rating relative to average + Rater's rating relative to average** (where mean movie rating is the average rating across all movies and users, movie's rating relative to average is defined as movie's average rating - mean movie rating, and rater's rating relative to average is defined as rater's average rating - mean movie rating).
+
+First, let's take calculate the average rating for each rater:
+
+```{r}
+avg_rater_ratings <- movie_ratings_full |>
+  group_by(rater) |>
+  summarize(avg_rater_rating = round(mean(rating, na.rm=T), 2))
+```
+
+Now, let's find the average rating for each movie:
+
+```{r}
+avg_movie_ratings <- movie_ratings_full |>
+  group_by(movie_title) |>
+  summarize(avg_movie_rating = round(mean(rating, na.rm=T), 2))
+```
+
+We can now join both tables to the original ratings table and perform the calculations for the average movie rating across movies and the relative ratings for raters and movies. 
+
+```{r}
+predicted_ratings_calc <- movie_ratings_full |>
+  left_join(avg_rater_ratings, by="rater") |>
+  left_join(avg_movie_ratings, by="movie_title") |>
+  mutate(mean_movie_rating = round(mean(rating, na.rm=T), 2),
+         rater_relative_rating = avg_rater_rating - mean_movie_rating,
+         movie_relative_rating = avg_movie_rating - mean_movie_rating)
+
+predicted_ratings <- predicted_ratings_calc |>
+  mutate(predicted_rating = ifelse(is.na(rating), mean_movie_rating-rater_relative_rating-movie_relative_rating, NA)) |>
+  select(rater, movie_title, predicted_rating)
+```
+
+We can see from here that some ratings go above the 1-5 rating range. This is probably due to the fact that some raters were more "nice" about their ratings than others, so their predicted movie ratings are likely to be higher. As such, their predicted rating score is out of the range, but still provides a good insight as to which movies should be recommended based on the highest predicted rating. 
+
+We can now recommend a movie to each person based on their predicted top-rated movie:
+
+```{r}
+predicted_ratings |>
+  group_by(rater) |>
+  mutate(max_rating = max(predicted_rating, na.rm=T)) |>
+  filter(predicted_rating == max_rating) |>
+  select(-max_rating) |>
+  knitr::kable()
+```
+
+
+
