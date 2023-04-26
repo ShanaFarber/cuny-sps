@@ -107,6 +107,8 @@ predicted_ratings_calc <- movie_ratings_full |>
 predicted_ratings <- predicted_ratings_calc |>
   mutate(predicted_rating = ifelse(is.na(rating), mean_movie_rating-rater_relative_rating-movie_relative_rating, NA)) |>
   select(rater, movie_title, predicted_rating)
+
+rmarkdown::paged_table(predicted_ratings)
 ```
 
 We can see from here that some ratings go above the 1-5 rating range. This is probably due to the fact that some raters were more "nice" about their ratings than others, so their predicted movie ratings are likely to be higher. As such, their predicted rating score is out of the range, but still provides a good insight as to which movies should be recommended based on the highest predicted rating. 
