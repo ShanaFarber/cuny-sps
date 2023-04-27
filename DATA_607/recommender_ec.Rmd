@@ -113,15 +113,29 @@ rmarkdown::paged_table(predicted_ratings)
 
 We can see from here that some ratings go above the 1-5 rating range. This is probably due to the fact that some raters were more "nice" about their ratings than others, so their predicted movie ratings are likely to be higher. As such, their predicted rating score is out of the range, but still provides a good insight as to which movies should be recommended based on the highest predicted rating. 
 
+Let's standardize these ratings to a 1-5 scale by first dividing all the predicted ratings by the maximum rating and then multiplying by 5 to get only ratings between a 1-5 range.
+
+```{r standardize-predicted}
+stand_predicted_ratings <- predicted_ratings |>
+  mutate(predicted_rating = round(predicted_rating/max(predicted_rating, na.rm=T)*5 ,2))
+```
+
+Since raters can only rate movies on a discrete scale of 1-5, the rater would not be able to rate movies with a decimal rating and we can round their predicted rating to the nearest whole number to see what they might actually rate the movie. However, I also think the predictions which include the decimal show insight into which movies the user would like more. For example, a rating of 3.8 and 4.3 would both translate to a rating of 4 when rounded to the nearest whole number, but based on the Global Baseline Estimator, the rater may enjoy the movie with the 4.3 rating better. Therefore, we can also keep the decimal rating to determine which is the top movie which should be recommended for the user or the order in which to recommend top-rated movies for a user. 
+
+```{r}
+whole_predicted_ratings <- stand_predicted_ratings |>
+  mutate(pred_rating_whole = round(predicted_rating, 0))
+```
+
 We can now recommend a movie to each person based on their predicted top-rated movie:
 
 ```{r}
-predicted_ratings |>
+whole_predicted_ratings |>
   group_by(rater) |>
   mutate(max_rating = max(predicted_rating, na.rm=T)) |>
   filter(predicted_rating == max_rating) |>
-  select(-max_rating) |>
-  knitr::kable()
+  select(-max_rating, -predicted_rating) |>
+  knitr::kable(col.names = c("Rater", "Movie Title", "Predicted Rating"))
 ```
 
 
