@@ -19,15 +19,16 @@ library(dotenv)
 library(lubridate)
 library(snakecase)
 library(infer)
+library(car)
 
 load_dot_env(".env")
 ```
 
 ## Abstract
 
-This project aims to investigate various factors associated with motor vehicle collisions and their relationships with the number and severity of collisions. The analysis was conducted using car crash data obtained from the New York City Police Department, which contains approximately 1.98 million collision records. The highest number of recorded collisions occurred between 2016-2018, with approximately 225,000 collisions occurring in each of these years. While the overall number of collisions seems to decrease from 2018-2022, the number of fatality or injury-inducing collisions increased by approximately 18% from 2018 to 2022.
+This study investigates factors associated with motor vehicle collisions and their relationships with collision severity. The analysis was conducted using car crash data obtained from the New York City Police Department, which contains approximately 1.98 million collision records. The highest number of recorded collisions occurred between 2016-2018, with approximately 225,000 collisions occurring in each of these years. While the overall number of collisions seems to decrease from 2018-2022, the number of fatality or injury-inducing collisions increased by approximately 18% from 2018 to 2022.
 
-Brooklyn recorded the highest number of collisions across all years, accounting for about 31-35% of collisions annually. Driver inattention or distraction was found to be the primary contributing factor for collisions, with approximately 31% of recorded reasons attributed to a driver not paying attention or being distracted and 416,287 collisions being caused by one or more drivers who were distracted. Alcohol abuse was identified as the main contributing factor for car crashes between the hours of 2-4 AM. Furthermore, accidents involving intoxicated drivers resulted in a significantly higher number of injuries or fatalities than those involving drivers who were not under the influence of alcohol or drugs.
+Brooklyn had the highest number of collisions across all years, accounting for about 31-35% of collisions annually. Driver inattention or distraction was found to be the primary contributing factor for collisions, with approximately 31% of recorded reasons attributed to a driver not paying attention or being distracted. Alcohol abuse was identified as the main contributing factor for car crashes between the hours of 2-4 AM. Moreover, the number of accidents resulting in serious injury or death was significantly higher among drivers who were intoxicated compared to those who were not under the influence of alcohol or drugs.
 
 The median age of drivers, irrespective of gender, was found to be 40, with approximately 50% of drivers falling between the ages of 29-53. The highest number of collisions were caused by drivers in the age range of 25-40. The data set recorded more than twice the number of collisions caused by men than by women. The median age of men involved in collisions was found to be 40, whereas the median age of women involved in collisions was 38. A significant relationship was observed between gender and age with respect to collisions, with the average age of males involved in collisions being higher than the average age of females involved in collisions.
 
@@ -41,15 +42,16 @@ For this project, I am curious to see what are the main factors of motor vehicle
 
 ### The Data
 
-Data is collected by the NYPD and is available online through the [NYC Vision Zero Open Data page](https://www.nyc.gov/content/visionzero/pages/open-data). For the purpose of this project, data was downloaded from the "Motor Vehicle Collisions – Crashes", "Motor Vehicle Collisions – Vehicles", and "Motor Vehicle Collisions – Person" links. Data was downloaded in CSV format and loaded into R. 
+Data is collected by the NYPD and is available online through the [NYC Vision Zero Open Data page](https://www.nyc.gov/content/visionzero/pages/open-data). For the purpose of this project, data was downloaded from the "Motor Vehicle Collisions – Crashes", and "Motor Vehicle Collisions – Person" links. Data was downloaded in CSV format and loaded into R through a PostgreSQL data base.  
 
 City of New York. Retrieved April 29, 2023, from:
 
 1. https://data.cityofnewyork.us/Public-Safety/Motor-Vehicle-Collisions-Crashes/h9gi-nx95 (crashes)
-2. https://data.cityofnewyork.us/Public-Safety/Motor-Vehicle-Collisions-Vehicles/bm4k-52h4 (vehicles)
-3. https://data.cityofnewyork.us/Public-Safety/Motor-Vehicle-Collisions-Person/f55k-p6yu (person)
+2. https://data.cityofnewyork.us/Public-Safety/Motor-Vehicle-Collisions-Person/f55k-p6yu (person)
 
-Each observation in the **crashes** data set corresponds with a crash that occurred, each with a unique `collision_id`. This can be matched to the `collision_id` in the **vehicles** and **person** data sets. 
+Each observation in the **crashes** data set corresponds with a crash that occurred, each with a unique `collision_id`. This can be matched to the `collision_id` in the **person** data set. 
+
+There are about 1.96M collisions recorded in the **crashes** data set, with 29 variables. There are about 5M people recorded in the **person** data set, with 21 variables. A full list of the description of each variable can be found in the OpenData page for each data set. 
 
 ### Loading Data from PostgreSQL Server
 
@@ -64,55 +66,50 @@ con <- dbConnect(
 )
 
 crashes_data <- dbGetQuery(con, "SELECT * FROM project.crashes")
-vehicles_data <- dbGetQuery(con, "SELECT * FROM project.vehicles")
 person_data <- dbGetQuery(con, "SELECT * FROM project.person")
 ```
 
 ### Data Cleaning
 
 ```{r clean-data}
+# remove unwanted columns
 crashes <- crashes_data |>
   mutate(zip_code = as.numeric(zip_code)) |>
-  select(-location, -on_street_name, -cross_street_name, -off_street_name) |>
-  arrange(collision_id)
+  select(-location, -on_street_name, -cross_street_name, -off_street_name, -c(vehicle_type_code_1:vehicle_type_code_5)) |>
+  arrange(collision_id) |>
+  select(collision_id, c(crash_date:contributing_factor_vehicle_5))
 
-vehicles <- vehicles_data |> 
-  select(-vehicle_id, -vehicle_make, -vehicle_model, -vehicle_year, -travel_direction, -driver_license_juristiction, -point_of_impact, -vehicle_damage, -vehicle_damage_1, -vehicle_damage_2, -vehicle_damage_3, -public_property_damage, -public_property_damage_type, -contributing_factor_1, -contributing_factor_2, "vehicle_id" = unique_id)
-
+# choose desired columns
 person <- person_data |>
-  select(-person_id, -person_injury, -ejection, -emotional_status, -bodily_injury, -safety_equipment, -complaint, -ped_location, -ped_action, -ped_role, -contributing_factor_1, -contributing_factor_2, "person_id" = unique_id) |>
-  mutate(vehicle_id = as.numeric(vehicle_id))
+  select("person_id" = unique_id, collision_id, crash_date, crash_time, person_type, position_in_vehicle, person_age, person_sex)
 ```
 
-### Creating a Drivers Data Set
+#### Creating a Drivers Data Set
 
 The **person** data set contains all people involved in a crash. I want to determine what factors relating to the driver of the vehicle contribute to collisions. For this, I will create a subset of the data called **drivers** which only includes those indicated to be the drivers of vehicles involved in accidents.
 
-The data set dictionary for the **person** data set indicates that age is automatically calculated by the system based on birth date. For some reason, this data set has values for ages way beyond and below what should be expected (from -999 to 9999). For this reason, I will limit my **drivers** data set to only include drivers that fall within a plausible age range. One of the limitations in filtering the data is that there may be some ages in this data set which are over or under represented due to incorrect input of the data. 
+The data set dictionary for the **person** data set indicates that age is automatically calculated by the system based on birth date. For some reason, this data set has values for ages way beyond and below what should be expected (from -999 to 9999). For this reason, I will limit my **drivers** data set to only include drivers that fall within a plausible age range (for this project, 16-87). One of the limitations in filtering the data is that there may be some ages in this data set which are over or under represented due to incorrect input of the data. 
 
 ```{r drivers}
 drivers <- person |>
   filter(person_type == "Occupant", 
          position_in_vehicle == "Driver",
-         person_age > 15, person_age < 87) |>
+         person_age >= 16, person_age <= 87) |>
   select(-person_type, -position_in_vehicle)
 ```
 
-Now I will join this to the **vehicle** and **crashes** data sets to create a data set of all crashes relative to the drivers of the vehicles. 
+Now I will join this to the **crashes** data sets to create a data set of all crashes relative to the drivers of the vehicles. 
 
 ```{r crashes-by-driver}
-crashes_by_driver <- vehicles |>
-  select(-collision_id, -crash_date, -crash_time) |>
-  right_join(drivers, by = "vehicle_id") |>
-  filter(!is.na(vehicle_id)) |>
+crashes_by_driver <- drivers |>
   select(-crash_date, -crash_time) |>
   left_join(crashes, by = "collision_id") |>
   filter(!is.na(collision_id)) |>
-  select(collision_id, crash_date, crash_time, borough, person_age, person_sex, vehicle_type, driver_license_status, number_persons_injured, number_persons_killed) |>
+  select(collision_id, crash_date, crash_time, borough, person_age, person_sex, number_persons_injured, number_persons_killed) |>
   arrange(collision_id)
 ```
 
-### Data Set of Fatal/Injury Inducing Accidents
+#### Data Set of Fatal/Injury Inducing Accidents
 
 ```{r}
 fatalities_and_injuries <- crashes |>
@@ -125,12 +122,6 @@ fatalities_and_injuries <- crashes |>
 
 ```{r}
 rmarkdown::paged_table(crashes)
-```
-
-#### Vehicles
-
-```{r}
-rmarkdown::paged_table(vehicles)
 ```
 
 #### Person
@@ -159,6 +150,114 @@ rmarkdown::paged_table(fatalities_and_injuries)
 
 ## Exploratory Data Analysis
 
+### Collisions by Year
+
+As we are currently in the middle of 2023, the data collection for this year is incomplete and I will limit the data till 2022. 
+
+```{r}
+crashes_till_22 <- crashes |>
+  mutate(year = year(crash_date)) |>
+  filter(year < 2023)
+
+crashes_by_year <- crashes_till_22 |>
+  count(year) 
+
+crashes_by_year |>
+  ggplot(aes(x = as.factor(year), y = n)) +
+  geom_bar(stat="identity", fill = "plum4") +
+  labs(title = "Collisions by Year (2012-2022)", x = "Year", y = "Number of Crashes") +
+  scale_y_continuous(label = scales::comma)
+```
+
+There is an increase in the number of collisions until 2016 and then a decrease after 2018. The most collisions occurred in 2016-2018, with about 225,000 collisions occurring in each of these years. In 2020, the number of collisions decreased by almost 50% from the previous year, possibly owing to stay-at-home orders due to Covid-19. 
+
+### Fatalities and Injuries from Crashes
+
+```{r}
+injuries_and_fatalities <- crashes_till_22 |>
+  mutate(year = year(crash_date),
+         injury = ifelse(number_persons_injured > 0, 1, 0),
+         death = ifelse(number_persons_killed > 0, 1, 0)) |>
+  group_by(year) |>
+  summarize(year_involve_injury = sum(injury, na.rm=T),
+            year_involve_death = sum(death, na.rm=T)) |>
+  mutate(total_collisions = crashes_by_year$n,
+         prop_injured = year_involve_injury / total_collisions,
+         prop_killed = year_involve_death/ total_collisions) |>
+  ungroup() |>
+  pivot_longer(cols = c(prop_injured:prop_killed),
+               names_to = "severity",
+               values_to = "prop") |>
+  mutate(severity = toupper(str_extract(severity, "killed|injured"))) 
+
+injuries_and_fatalities |>
+  ggplot(aes(x = as.factor(year), y = prop, fill = severity)) +
+  geom_bar(stat="identity") +
+  labs(title = "Collisions Involving Injury/Death per Year (2012-2022)", x = "Year", y = "Percentage of Crashes Involving Injury/Death") +
+  scale_y_continuous(label = scales::percent) +
+  geom_text(aes(label = paste0(round(prop*100, 2),'%')), vjust = -0.5, size=3)
+```
+
+While the number of collisions seems to have decreased from 2018-2022, the percentage of collisions involving fatalities and/or injuries has increased, with almost 40% of collisions in 2022 involving injuries and about 0.3% of crashes involving deaths. 
+
+### Collisions by Borough {.tabset .tabset-fade .tabset-pills}
+
+```{r}
+crashes_till_22 |>
+  filter(!is.na(borough) & year >= 2017) |>
+  group_by(year) |>
+  count(borough) |>
+  mutate(prop = n / sum(n)) |>
+  ggplot(aes(x = borough, y = prop)) +
+  geom_bar(stat="identity", fill = "steelblue") +
+  facet_wrap(~year) + 
+  labs(title = "Collisions by Borough (2017-2022)", x = "Borough", y = "Percentage of Crashes", caption = "*Perentage out of collisions where borough is known (i.e. not NA)") +
+  scale_y_continuous(label = scales::percent) +
+  geom_text(aes(label = paste0(round(prop*100, 0),'%')), size = 3) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+Brooklyn and Queens have consistently had the highest percentage of collisions annually, with Brooklyn making up between 31-35% of collisions and Queens making up about 27-29% of collisions per year from 2017-2022. 
+
+Which areas within these boroughs have the highest number of collisions?
+
+#### Brooklyn
+
+```{r}
+crashes_till_22 |>
+  filter(borough == "BROOKLYN") |>
+  count(zip_code) |>
+  drop_na() |>
+  arrange(desc(n)) |>
+  head(10) |>
+  ggplot(aes(y = reorder(as.factor(zip_code), n), x = n)) +
+  geom_bar(stat = "identity", fill = "steelblue3") +
+  labs(title = "Highest Collisions by Zipcode - Brooklyn", x = "Count", y = "Zipcode")
+```
+
+The zipcode with the highest number of collisions in Brooklyn is 11207, located in East New York. 
+
+#### Queens
+
+For this, I joined the crashes data to a CSV which I created of Queens cities based on zipcodes. The information for the zipcodes was found [here](https://www.zipcodestogo.com/Queens/NY/). 
+
+```{r}
+queens_zips <- read.csv(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_607/final_project/queens_zipcodes.csv"))
+
+crashes_till_22 |>
+  filter(borough == "QUEENS") |>
+  left_join(queens_zips, by = "zip_code") |>
+  count(city) |>
+  drop_na() |>
+  arrange(desc(n)) |>
+  head(10) |>
+  ggplot(aes(y = reorder(city, n), x = n)) +
+  geom_bar(stat = "identity", fill = "steelblue3") +
+  labs(title = "Highest Collisions by City - Queens", x = "Count", y = "Zipcode")
+```
+
+The highest number of collisions in Queens are in Jamaica and Flushing. 
+
 ### Main Contributing Factors {.tabset .tabset-fade .tabset-pills}
 
 To determine the contributing factors of collisions, I will use the `contributing_factor_vehicle_x` columns from the **crashes** data set. The data set will have to be transformed to a long format for this.
@@ -171,10 +270,11 @@ contributing_factors <- contributing_factors_by_crash |>
   pivot_longer(col = c(contributing_factor_vehicle_1:contributing_factor_vehicle_5),
                names_to = "vehicle",
                values_to = "factor") |>
-  mutate(factor = replace(factor, str_detect(factor, "Cell Phone"), "Cell Phone"),
-         factor = replace(factor, str_detect(factor, "Drugs"), "Drugs"),
-         factor = replace(factor, str_detect(factor, "Ill"), "Illness"),
-         factor = replace(factor, str_detect(factor, "Uninvolved Vehicle"), "Reaction to Uninvolved Vehicle")) |>
+  mutate(factor = case_when(str_detect(factor, "Cell Phone") ~ "Cell Phone",
+                            str_detect(factor, "Drugs") ~ "Drugs",
+                            str_detect(factor, "Ill") ~ "Illness",
+                            str_detect(factor, "Uninvolved Vehicle") ~ "Reaction to Uninvolved Vehicle",
+                            TRUE~factor)) |>
   filter(!is.na(factor), !factor %in% c("Unspecified", "1", "80"))
 
 contributing_factors |>
@@ -193,7 +293,7 @@ The main contributing factor in motor vehicle collisions is driver inattention/d
 ```{r}
 contributing_factors |>
   select(-vehicle) |>
-  unique() |> # remove replicated crashes (i.e. multiple drivers with same causal factor)
+  unique() |> # remove replicated crashes (i.e. multiple drivers in one collision with same causal factor)
   count(factor) |>
   arrange(desc(n)) |>
   head(1)
@@ -277,76 +377,40 @@ contributing_factors |>
     geom_text(aes(label = n), vjust = -0.5, size=3)
 ```
 
-The most recorded collisions from alcohol/drug involvement was in 2016, with 3,033 accidents occurring in relation to intoxicated drivers. Since Vision Zero was only implemented in 2016, the number of collisions from 2012-2015 may not be complete so these numbers may not accurately reflect the true number of crashes caused by alcohol/drug involvement. Likewise, the data for 2023 is not complete, as the data was accessed about five months into the year and only accounts for collisions within those five months. Since the implementation of Vision Zero in 2016, it seems that collisions resulting from drug or alcohol intoxication has decreased till 2020 and then started to increase again slightly. The major dip from 2019 to 2020 may have been caused by stay-at-home policies due to Covid-19 resulting in less drivers overall on roads during this time. 
+The most recorded collisions from alcohol/drug involvement was in 2016, with 2,925 accidents occurring in relation to intoxicated drivers. Since Vision Zero was only implemented in 2016, the number of collisions from 2012-2015 may not be complete so these numbers may not accurately reflect the true number of crashes caused by alcohol/drug involvement. Likewise, the data for 2023 is not complete, as the data was accessed about five months into the year and only accounts for collisions within those five months. Since the implementation of Vision Zero in 2016, it seems that collisions resulting from drug or alcohol intoxication has decreased till 2020 and then started to increase again slightly. The major dip from 2019 to 2020 may have been caused by stay-at-home policies due to Covid-19 resulting in less drivers overall on roads during this time. 
 
-### Collisions by Year
-
-As we are currently in the middle of 2023, the data collection for this year is incomplete and I will limit the data till 2022. 
+#### Per Hour of Day
 
 ```{r}
-crashes_till_22 <- crashes_by_year <- crashes |>
-  mutate(year = year(crash_date)) |>
-  filter(year < 2023)
-
-crashes_by_year <- crashes_till_22 |>
-  count(year) 
-
-crashes_by_year |>
-  ggplot(aes(x = as.factor(year), y = n)) +
-  geom_bar(stat="identity", fill = "plum4") +
-  labs(title = "Collisions by Year (2012-2022)", x = "Year", y = "Number of Crashes") +
-  scale_y_continuous(label = scales::comma)
+contributing_factors |>
+  filter(str_detect(tolower(factor), "drugs|alcohol")) |>
+  select(-vehicle) |>
+  unique() |>
+  count(hour = as.factor(hour(crash_time))) |> 
+  ggplot(aes(x = hour, y = n)) +
+    geom_bar(stat="identity", fill = "steelblue4") +
+    labs(title = "Number of Collisions Involving Intoxicated* Drivers", x = "Hour of Day", y = "Number of Accidents", caption = "*Drugs or Alcohol") +
+    geom_text(aes(label = n), vjust = -0.5, size=2.5)
 ```
 
-There is an increase in the number of collisions until 2016 and then a decrease after 2018. The most collisions occurred in 2016-2018, with about 225,000 collisions occurring in each of these years. In 2020, the number of collisions decreased by almost 50% from the previous year, probably owing to stay-at-home orders due to Covid-19. 
+The most collisions occur from driver intoxication in the early and later hours of the day (from midnight to 5 AM and rising steadily from 4 to 11 PM). 
 
-### Fatalities and Injuries from Crashes
+#### Across Boroughs
 
 ```{r}
-injuries_and_fatalities <- crashes_till_22 |>
-  mutate(year = year(crash_date),
-         injury = ifelse(number_persons_injured > 0, 1, 0),
-         death = ifelse(number_persons_killed > 0, 1, 0)) |>
-  group_by(year) |>
-  summarize(year_involve_injury = sum(injury, na.rm=T),
-            year_involve_death = sum(death, na.rm=T)) |>
-  mutate(total_collisions = crashes_by_year$n,
-         prop_injured = year_involve_injury / total_collisions,
-         prop_killed = year_involve_death/ total_collisions) |>
-  ungroup() |>
-  pivot_longer(cols = c(prop_injured:prop_killed),
-               names_to = "severity",
-               values_to = "prop") |>
-  mutate(severity = toupper(str_extract(severity, "killed|injured"))) 
-
-injuries_and_fatalities |>
-  ggplot(aes(x = as.factor(year), y = prop, fill = severity)) +
-  geom_bar(stat="identity") +
-  labs(title = "Collisions Involving Injury/Death per Year (2012-2022)", x = "Year", y = "Percentage of Crashes Involving Injury/Death") +
-  scale_y_continuous(label = scales::percent) +
-  geom_text(aes(label = paste0(round(prop*100, 2),'%')), vjust = -0.5, size=3)
+contributing_factors |>
+  filter(str_detect(tolower(factor), "drugs|alcohol")) |>
+  select(-vehicle) |>
+  filter(!is.na(borough)) |>
+  unique() |>
+  count(borough) |> 
+  ggplot(aes(x = borough, y = n)) +
+    geom_bar(stat="identity", fill = "steelblue4") +
+    labs(title = "Number of Collisions Involving Intoxicated* Drivers", x = "Borough", y = "Number of Accidents", caption = "*Drugs or Alcohol") +
+    geom_text(aes(label = n), vjust = -0.5, size=3)
 ```
 
-This graph seems to follow the opposite trend of the number of collisions per year. While the number of collisions seems to have decreased from 2018-2022, the percentage of collisions involving fatalities and/or injuries has increased, with almost 40% of collisions in 2022 involving injuries and about 0.3% of crashes involving deaths. 
-
-### Collisions by Borough
-
-```{r}
-crashes_till_22 |>
-  filter(!is.na(borough) & year >= 2017) |>
-  group_by(year) |>
-  count(borough) |>
-  mutate(prop = n / sum(n)) |>
-  ggplot(aes(x = borough, y = prop)) +
-  geom_bar(stat="identity", fill = "steelblue") +
-  facet_wrap(~year) + 
-  labs(title = "Collisions by Borough (2017-2022)", x = "Borough", y = "Percentage of Crashes", caption = "*Perentage out of collisions where borough is known (i.e. not NA)") +
-  scale_y_continuous(label = scales::percent) +
-  geom_text(aes(label = paste0(round(prop*100, 0),'%')), size = 3) +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-```
-
-Brooklyn and Queens have consistently had the highest percentage of collisions annually, with Brooklyn making up between 31-35% of collisions and Queens making up about 27-29% of collisions per year from 2017-2022. 
+The most collisions resulting from alcohol/drug usage occur in Brooklyn and Queens. 
 
 ### Collisions by Age
 
@@ -441,17 +505,15 @@ Based on the exploratory data analysis, I would like to determine the extent to 
 
 First, let's look at the relationship between driver intoxication and collision severity.
 
-**Question: Is there a significant difference in the number of people injured or killed in motor vehicle collisions involving alcohol/drug-impaired drivers vs. those not involving alcohol-impaired drivers?**
+**Question: Is there a significant relationship between alcohol/drug involvement and serious injuries or deaths in collisions?**
 
-For this, I will be using a two-sample t-test to compare the mean number of injuries/deaths caused by car crashes involving driver intoxication vs. not involving driver intoxication. 
+The variables for this analysis are categorical (whether or not there is a serious injury or death, whether or not there is alcohol involvement), so I will be using a chi-square test to compare the observed values for the number of accidents with serious injuries/deaths for both non-intoxicated and intoxicated drivers against the expected values if driver intoxication does not play a significant role. 
 
-$H_0: \mu_1 = \mu_2$ (There is no significant difference in the number of people injured or killed in motor vehicle collisions involving alcohol/dug-impaired drivers and those not involving alcohol-impaired drivers)
+$H_0$: There is no significant relationship between alcohol/drug use and serious injuries or deaths in collisions.
 
-$H_A: \mu_1 \neq \mu_2$ (There is a significant difference in the number of people injured or killed in motor vehicle collisions involving alcohol/drug-impaired drivers and those not involving alcohol-impaired drivers)
+$H_A$: There is a significant relationship between alcohol/drug use and serious injuries or deaths in collisions.
 
-Where $\mu_1$ is the mean number of injuries/fatalities caused by intoxicated drivers and $\mu_2$ is the mean number of injuries/fatalities caused by non-intoxicated drivers. 
-
-I will conduct this test twice for accidents resulting in injuries and accidents resulting in deaths. 
+$\alpha = 0.05$
 
 Since Vision Zero only started in 2016 and the data for 2023 is not yet complete, I will filter the data to only collisions between 2016 and 2022. I am also going to include the use of prescription medication within the realm of drug and alcohol use. 
 
@@ -460,41 +522,80 @@ collision_severity <- crashes |>
   filter(year(crash_date) >= 2016,
          year(crash_date) <= 2022) |>
   select(collision_id, number_persons_injured, number_persons_killed) |>
-  mutate(injured_or_killed = number_persons_injured + number_persons_killed)
+  mutate(num_injured_or_killed = number_persons_injured + number_persons_killed)
 
+#  subset of collisions involving alcohol/drug use
 alcohol_drugs <- contributing_factors |>
   filter(year(crash_date) >= 2016,
          year(crash_date) <= 2022,
          str_detect(tolower(factor), "drugs|alcohol|medication")) |>
-  pivot_wider(names_from = vehicle,
-              values_from = factor) |>
-  left_join(collision_severity, by = "collision_id")
+  select(-vehicle, -factor) |>
+  unique() |> # remove redundant collisions
+  left_join(collision_severity, by = "collision_id") |>
+  mutate(alc_drugs = "Intox")
 
+# subset of collisions not involving alcohol/drug use
 not_alcohol_drugs <- contributing_factors |>
   filter(year(crash_date) >= 2016,
          year(crash_date) <= 2022) |>
   subset(!collision_id %in% alcohol_drugs$collision_id) |> # any collision not related to any intoxicated driver
-  pivot_wider(names_from = vehicle,
-              values_from = factor) |>
-  left_join(collision_severity, by = "collision_id")
+  select(-vehicle, -factor) |>
+  unique() |>
+  left_join(collision_severity, by = "collision_id") |>
+  mutate(alc_drugs = "Not Intox")
+
+# all collisions
+alc_drug_involvement <- rbind(alcohol_drugs, not_alcohol_drugs)
+
+alc_drug_involvement |>
+  count(alc_drugs)
+
+alc_drug_involvement <- alc_drug_involvement |>
+  mutate(injured_or_killed = ifelse(num_injured_or_killed > 0, "Injuries/Death", "No Injuries/Death")) 
+
+serious_injuries_intox_or_not <- table(alc_drug_involvement$injured_or_killed, alc_drug_involvement$alc_drugs)
+
+(chi_sq <- chisq.test(serious_injuries_intox_or_not))
 ```
 
-Let's take a look at the means and variances for the number of injuries caused in these accidents:
+The p-value here is less than 2.2e-16 which is much less than 0.05 so there is a significant relationship between driver intoxication and serious injury/death in collisions. 
 
 ```{r}
-# compare means
-mean(alcohol_drugs$injured_or_killed)
-mean(not_alcohol_drugs$injured_or_killed, na.rm=T)
-
-# compare standard deviations
-sd(alcohol_drugs$injured_or_killed)
-sd(not_alcohol_drugs$injured_or_killed, na.rm=T)
-
-# Welch t-test to determine if the difference in means is statistically significant
-t.test(alcohol_drugs$number_persons_injured, not_alcohol_drugs$number_persons_injured, alternative = "two.sided", var.equal = F)
+chi_sq$expected
 ```
 
-The variances for these samples are not the same so we use Welch's t-test for the analysis. The p-value for this test is very small (< 2.2e-16), indicating that there is a significant difference in the mean number of people injured or killed in accidents involving alcohol/drugs (mean $\approx$ 0.49) and those which do not involve alcohol/drugs (mean $\approx$ 0.33). Based on the 95% confidence interval, we are 95% confident that the true difference in the means of people injured or killed in accidents involving inebriated drivers falls somewhere between about 0.143 and 0.172. 
+**Assumptions of** $\chi^2$:
+
+As stated above, the variables are categorical. Additionally, each observation in the `alc_drug_involvement` data set is independent of each other, as each records a specific collision where alcohol or drugs were either involved or not involved. The cells of the contingency table are mutually exclusive, and the expected value for 100% of the cells is greater than 5. Therefore, all assumptions of chi-square are met. (Expected values must be greater than 5 in at least 80% of the cells, and cannot go below 1). 
+
+### Intoxication and Time of Day
+
+**Question: Is there a significant relationship between collisions caused by driver intoxication and time of day?**
+
+$H_0$: There is no significant relationship between alcohol/drug involvement in collisions and time of day.
+
+$H_A$: There is a significant relationship between alcohol/drug involvement in collisions and time of day.
+
+$\alpha = 0.05$
+
+```{r}
+time_of_day <- alc_drug_involvement |>
+  mutate(time_of_day = case_when(hour(crash_time) >= 5 & hour(crash_time) < 12 ~ "Morning",
+                                 hour(crash_time) >= 12 & hour(crash_time) < 17 ~ "Afternoon",               
+                                 TRUE ~ "Evening"))
+
+intox_vs_time_of_day <- table(time_of_day$time_of_day, time_of_day$alc_drugs)
+
+(chi_sq2 <- chisq.test(intox_vs_time_of_day))
+```
+
+The p-value is 2.2e-16 which is very small and less than 0.05, so there is a relationship between collisions caused by driver intoxication and time of day. 
+
+```{r}
+chi_sq2$expected
+```
+
+Accidents involving driver intoxication are more likely to occur in the evening (between 5 PM and 5 AM) than they are during the Morning or Afternoon. 
 
 ### Age and Gender vs. Collisions
 
@@ -506,23 +607,25 @@ $H_0: \mu_1 = \mu_2$ (There is no significant difference in the ages of males an
 
 $H_A: \mu_1 \neq \mu_2$ (There is a significant difference in the ages of males and females involved in motor vehicle collisions)
 
-To normalize the data, let's look at drivers below the age of 67. To make the data more manageable, let's look at just collisions for 2019. 
+Where $\mu_1$ is the mean age of males involved in collisions and $\mu_2$ is the mean age of females involved in collisions.
+
+$\alpha = 0.05$
+
+To make the data more manageable, let's look at just collisions for 2019. 
 
 ```{r}
-drivers_16to67_2019 <- drivers_2016_2022 |>
-  filter(person_sex %in% c("M", "F"), person_age <= 67, year == 2019) 
+drivers_2019 <- drivers_2016_2022 |>
+  filter(person_sex %in% c("M", "F"), year == 2019) 
 
-drivers_16to67_2019 |>
+drivers_2019 |>
   ggplot(aes(x = person_age, y = person_sex, fill = person_sex)) +
   geom_boxplot() +
-  labs(title = "Distribution of Ages by Sex in 2019 (Drivers Aged 16-67)", x = "Age", y = "Sex") +
+  labs(title = "Distribution of Ages by Sex in 2019", x = "Age", y = "Sex") +
   theme(legend.position = "none")
 ```
 
-The distribution of ages now looks to be approximately normal. We can see that the median age for male drivers involved in collisions is higher than that of female drivers involved in collisions. Let's compare the mean ages for both genders.
-
 ```{r}
-drivers_16to67_2019 |>
+drivers_2019 |>
   group_by(person_sex) |>
   summarize(mean_age = mean(person_age))
 ```
@@ -530,28 +633,39 @@ drivers_16to67_2019 |>
 There is an observed difference. But, is this difference statistically significant?
 
 ```{r}
-males <- drivers_16to67_2019 |>
+males <- drivers_2019 |>
   filter(person_sex == "M")
 
-females <- drivers_16to67_2019 |>
+females <- drivers_2019 |>
   filter(person_sex == "F")
+```
+
+**Assumptions of t-test:**
+
+```{r}
+drivers_2019 |>
+  count(person_sex)
 
 sd(males$person_age)
 sd(females$person_age)
+```
 
+Each observation in the data set represents a single driver, independent of one another. Since there is a very large sample size, there is no need to normalize the data and we may use it as is. (A note on this: I also performed the analysis using the log of `person_age` to normalize and saw no difference in the results vs. the results of the un-transformed data. For interpretability purposes, I chose to use the un-transformed data.) The variance for both groups is about the same. Since the data was collected by the NYPD and records drivers actually involved in accidents, it is reasonable to assume that the data is random and does not have biases. Therefore, assumptions of the t-test are met. 
+
+```{r}
 t.test(males$person_age, females$person_age, alternative = "two.sided", var.equal = T)
 ```
 
-The p-value for this t-test is very small (< 2.2e-16), so therefore we reject the null hypothesis and say that there is a significant difference in the mean ages between males and females involved in accidents. The mean age for men is about 40.72 and the mean age for women is about 39.30. Based on the 95% confidence interval, we are 95% confident that the true difference in the mean ages for men and women involved in car accidents is between 1.315 and 1.527. 
+The p-value for this t-test is very small (< 2.2e-16), so therefore we reject the null hypothesis and say that there is a significant difference in the mean ages between males and females involved in accidents. The mean age for men is about 42.5 and the mean age for women is about 41.1. Based on the 95% confidence interval, we are 95% confident that the true difference in the mean ages for men and women involved in car accidents is between 1.32 and 1.55. 
 
 We can also visualize this significance using the null distribution. 
 
 ```{r}
-obs_diff <- drivers_16to67_2019 |>
+obs_diff <- drivers_2019 |>
   specify(person_age~person_sex) |>
   calculate(stat = "diff in means", order = c("M", "F"))
 
-null_dist <- drivers_16to67_2019 |>
+null_dist <- drivers_2019 |>
   specify(person_age~person_sex) |>
   hypothesize(null = "independence") |>
   generate(reps = 1000, type = "permute") |>
@@ -560,15 +674,17 @@ null_dist <- drivers_16to67_2019 |>
 visualize(null_dist) + shade_p_value(obs_stat = obs_diff, direction = "two_sided")
 ```
 
-The observed difference is way off from what we would expect to see if there was not a statistically significant relationship. Therefore, we can conclude that there is a significant difference in the mean ages of men and women who get involved in collisions. 
+The observed difference is way off from what we would expect to see if there was not a statistically significant relationship. Therefore, we can conclude that there is a significant difference in the mean ages of men and women who get involved in collisions. As such, there is a significant relationship between the ages of men and women in relation to being involved in collisions. Men who get into car accidents tend to be slightly older than women who get into car accidents.
 
 ## Conclusions
 
-Based on the analysis of car crash data obtained from the New York City Police Department, this project identified driver inattention/distraction as the primary contributing factor for collisions, with 416,287 collisions recorded as being caused by one or more drivers who were distracted or not paying attention. Aside from this, alcohol abuse was found to be the main contributing factor for car crashes between the hours of 2-4 AM. Using a two-sample Welch t-test, the data provided evidence that the number of people injured or killed in collisions involving intoxicated drivers is significantly more than the number of people injured or killed in car crashes where there is no alcohol or drug involvement. 
+Based on the analysis of car crash data obtained from the New York City Police Department, this project identified driver inattention/distraction as the primary contributing factor for collisions, with 416,287 collisions recorded as being caused by one or more drivers who were distracted or not paying attention. Aside from this, alcohol abuse was found to be the main contributing factor for car crashes between the hours of 2-4 AM. Using a chi-square test of independence, the data provided evidence that there are significantly more accidents resulting in serious injury or death when there is alcohol or drugs involved than when there is no alcohol or drug involvement. 
 
-The analysis also revealed a significant relationship between gender and age with respect to collisions. The data also showed a higher number of collisions caused by men than by women, with the median age of men involved in collisions (40) being higher than the median age of women involved in collisions (38). Using a two-sample t-test and visualizing with the null distribution, this difference was shown to be significant, with the average age of men involved in collisions being significantly higher than the average age of women involved in accidents.  
+The analysis also revealed a significant relationship between gender and age with respect to collisions. The data also showed a higher number of collisions caused by men than by women, with the median age of men involved in collisions (40) being higher than the median age of women involved in collisions (38). Using a two-sample t-test and visualizing with the null distribution, this difference was shown to be significant, with the average age of men involved in collisions being significantly higher than the average age of women involved in accidents. 
 
-The findings of this study have important implications for policymakers and stakeholders in the transportation and law enforcement sectors, who can leverage this information to design evidence-based interventions and strategies to reduce the number of motor vehicle collisions, injuries, and fatalities in New York City and beyond. The insights generated from this study can also inform future research efforts in this field, as well as support the development of public education campaigns that promote safe driving practices and increase awareness of the risks associated with distracted and impaired driving.
+According to the data, Brooklyn and Queens had the largest percentage of collisions in the data set. The zipcode with the highest number of collisions in Brooklyn was 11207, located in East New York. The highest number of collisions in Queens occurred in Jamaica and Flushing. This type of analysis, along with determining streets or cross roads with high densities of collisions occurring, can allow city planners and policymakers to determine areas where traffic safety measures need to be implemented, such as increasing the number of traffic signals or improving road signs, etc. 
+
+While there is more analysis that can be done using this data, this study provides a brief insight into some of the underlying factors which contribute to collisions and the severity of collisions. This also highlights the need for future research to be able to design evidence-based interventions and strategies to reduce the number of motor vehicle collisions, serious injuries, and deaths in New York City. 
 
 ## Limitations
 
@@ -577,4 +693,3 @@ There were a few limitations I noticed while analyzing these data sets. As noted
 Another limitation that I found was that the **crashes** data set has separate columns for the contributing factors based on each vehicle involved in a collision (`contributing_factor_vehicle_x`), but, there is no indication in the **person** data set as to which vehicle they were in (i.e. were they vehicle 1 in the MV-104 form or vehicle 2, etc). Additionally, the `contributing_factor_x` columns in the **person** data set was not as robust as the contributing factors columns in the **crashes** data set. For this reason, I could not compare the main contributing factors for car accidents across different genders or age groups, as I could not match up the people to the vehicles involved in the crashes. 
 
 An additional limitation is that this data is limited only to reported accidents. Accidents which were not reported to the authorities are not included in this data set and therefore the data may not be representative of all collisions in New York City as certain types of collisions or areas with low reporting rates may not be represented. 
-
