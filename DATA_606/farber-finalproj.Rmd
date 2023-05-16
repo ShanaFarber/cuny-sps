@@ -19,16 +19,16 @@ library(dotenv)
 library(lubridate)
 library(snakecase)
 library(infer)
-library(car)
+library(vcd)
 
 load_dot_env(".env")
 ```
 
 ## Abstract
 
-This study investigates factors associated with motor vehicle collisions and their relationships with collision severity. The analysis was conducted using car crash data obtained from the New York City Police Department, which contains approximately 1.98 million collision records. The highest number of recorded collisions occurred between 2016-2018, with approximately 225,000 collisions occurring in each of these years. While the overall number of collisions seems to decrease from 2018-2022, the number of fatality or injury-inducing collisions increased by approximately 18% from 2018 to 2022.
+This study investigates factors associated with motor vehicle collisions and their relationships with collision severity. The analysis was conducted using car crash data obtained from the New York City Police Department, which contains approximately 2 million collision records. The highest number of recorded collisions occurred between 2016-2018, with approximately 225,000 collisions occurring in each of these years. While the overall number of collisions seems to decrease from 2018-2022, the number of fatality or injury-inducing collisions increased by approximately 18% from 2018 to 2022.
 
-Brooklyn had the highest number of collisions across all years, accounting for about 31-35% of collisions annually. Driver inattention or distraction was found to be the primary contributing factor for collisions, with approximately 31% of recorded reasons attributed to a driver not paying attention or being distracted. Alcohol abuse was identified as the main contributing factor for car crashes between the hours of 2-4 AM. Moreover, the number of accidents resulting in serious injury or death was significantly higher among drivers who were intoxicated compared to those who were not under the influence of alcohol or drugs.
+Brooklyn had the highest number of collisions across all years, accounting for about 31-35% of collisions annually. Driver inattention or distraction was found to be the primary contributing factor for collisions, with approximately 31% of recorded reasons attributed to a driver not paying attention or being distracted. Alcohol abuse was identified as the main contributing factor for car crashes between the hours of 2-4 AM. Moreover, there is a significant relationship between alcohol/drug involvement in collisions and collisions severity.
 
 The median age of drivers, irrespective of gender, was found to be 40, with approximately 50% of drivers falling between the ages of 29-53. The highest number of collisions were caused by drivers in the age range of 25-40. The data set recorded more than twice the number of collisions caused by men than by women. The median age of men involved in collisions was found to be 40, whereas the median age of women involved in collisions was 38. A significant relationship was observed between gender and age with respect to collisions, with the average age of males involved in collisions being higher than the average age of females involved in collisions.
 
@@ -373,7 +373,7 @@ contributing_factors |>
   count(year = as.factor(year(crash_date))) |> 
   ggplot(aes(x = year, y = n)) +
     geom_bar(stat="identity", fill = "steelblue4") +
-    labs(title = "Number of Collisions Involving Intoxicated* Drivers", x = "Year", y = "Number of Accidents", caption = "*Drugs or Alcohol") +
+    labs(title = "Number of Collisions Involving Intoxicated* Drivers per Year", x = "Year", y = "Number of Accidents", caption = "*Drugs or Alcohol") +
     geom_text(aes(label = n), vjust = -0.5, size=3)
 ```
 
@@ -389,7 +389,7 @@ contributing_factors |>
   count(hour = as.factor(hour(crash_time))) |> 
   ggplot(aes(x = hour, y = n)) +
     geom_bar(stat="identity", fill = "steelblue4") +
-    labs(title = "Number of Collisions Involving Intoxicated* Drivers", x = "Hour of Day", y = "Number of Accidents", caption = "*Drugs or Alcohol") +
+    labs(title = "Number of Collisions Involving Intoxicated* Drivers per Hour of Day", x = "Hour of Day", y = "Number of Accidents", caption = "*Drugs or Alcohol") +
     geom_text(aes(label = n), vjust = -0.5, size=2.5)
 ```
 
@@ -406,7 +406,7 @@ contributing_factors |>
   count(borough) |> 
   ggplot(aes(x = borough, y = n)) +
     geom_bar(stat="identity", fill = "steelblue4") +
-    labs(title = "Number of Collisions Involving Intoxicated* Drivers", x = "Borough", y = "Number of Accidents", caption = "*Drugs or Alcohol") +
+    labs(title = "Number of Collisions Involving Intoxicated* Drivers by Borough", x = "Borough", y = "Number of Accidents", caption = "*Drugs or Alcohol") +
     geom_text(aes(label = n), vjust = -0.5, size=3)
 ```
 
@@ -505,13 +505,18 @@ Based on the exploratory data analysis, I would like to determine the extent to 
 
 First, let's look at the relationship between driver intoxication and collision severity.
 
-**Question: Is there a significant relationship between alcohol/drug involvement and serious injuries or deaths in collisions?**
+**Question: Is there a significant relationship between alcohol/drug involvement and collision severity?**
 
-The variables for this analysis are categorical (whether or not there is a serious injury or death, whether or not there is alcohol involvement), so I will be using a chi-square test to compare the observed values for the number of accidents with serious injuries/deaths for both non-intoxicated and intoxicated drivers against the expected values if driver intoxication does not play a significant role. 
+For this, I will define "collision severity" in two ways:
 
-$H_0$: There is no significant relationship between alcohol/drug use and serious injuries or deaths in collisions.
+1. The number of collisions that result in injury/fatality.
+2. The number of people who are injured/killed in accidents. 
 
-$H_A$: There is a significant relationship between alcohol/drug use and serious injuries or deaths in collisions.
+The variables for this analysis are categorical (whether or not there is a serious injury or death, whether or not there is alcohol involvement), so I will be using a chi-square test to compare the observed values for the number of accidents with serious injuries/deaths for accidents involving intoxicated and non-intoxicated drivers against the expected values if driver intoxication does not play a significant role. 
+
+$H_0$: There is no significant relationship between alcohol/drug use and collision severity.
+
+$H_A$: There is a significant relationship between alcohol/drug use and collision severity.
 
 $\alpha = 0.05$
 
@@ -550,25 +555,73 @@ alc_drug_involvement <- rbind(alcohol_drugs, not_alcohol_drugs)
 alc_drug_involvement |>
   count(alc_drugs)
 
-glimpse(alc_drug_involvement)
-
 alc_drug_involvement <- alc_drug_involvement |>
   mutate(injured_or_killed = ifelse(num_injured_or_killed > 0, "Injuries/Death", "No Injuries/Death")) 
 
+glimpse(alc_drug_involvement)
+```
+
+#### Chi-Square Analysis 1 - Number of Collisions
+
+```{r}
 serious_injuries_intox_or_not <- table(alc_drug_involvement$injured_or_killed, alc_drug_involvement$alc_drugs)
 
-(chi_sq <- chisq.test(serious_injuries_intox_or_not))
+(chi_sq1 <- chisq.test(serious_injuries_intox_or_not))
 ```
 
 The p-value here is less than 2.2e-16 which is much less than 0.05 so there is a significant relationship between driver intoxication and serious injury/death in collisions. 
 
 ```{r}
-chi_sq$expected
+chi_sq1$residuals
+
+assocplot(serious_injuries_intox_or_not, col = c("Green", "Grey"), space = 0.5, main = "Associations Between Driver Intoxication and Collisions Severity", xlab = "Injuries or Death?", ylab = "Alcohol or Drugs Involved?")
+
+assocstats(serious_injuries_intox_or_not)
 ```
+
+There seems to be a high association between collisions involving alcohol/drugs and collisions resulting in injury/death. 
+
+Cramer's V for this test is 0.023, which indicates a weak association. 
+
+#### Chi-Square Analysis 2 - Number of People Injured/Killed
+
+```{r}
+alc_drug_involvement |>
+  filter(num_injured_or_killed > 0) |>
+  count(num_injured_or_killed) |>
+  ggplot(aes(x = num_injured_or_killed, y = n)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Distribution of Number of People Injured in Collisions", y = "Count", x = "Number of People Injured")
+
+alc_drug_involvement <- alc_drug_involvement |> 
+  mutate(num_injured_or_killed = ifelse(num_injured_or_killed >= 9, "9+", as.character(num_injured_or_killed)))
+
+num_injured_alc_involvement <- table(alc_drug_involvement$num_injured_or_killed, alc_drug_involvement$alc_drugs)
+
+(chi_sq2 <- chisq.test(num_injured_alc_involvement))
+```
+
+Once again, the p-value is less than 2.2e-16 which is much less than 0.05, so the results are that the relationship is significant. 
+
+```{r}
+chi_sq2$residuals
+
+assocstats(num_injured_alc_involvement)
+```
+
+Based on the residuals, there are higher numbers of instances of more people being injured in crashes with intoxicated drivers than would be expected if there was no relationship. 
+
+Cramer's V here is 0.031, which also indicates a weak association. 
 
 **Assumptions of** $\chi^2$:
 
 As stated above, the variables are categorical. Additionally, each observation in the `alc_drug_involvement` data set is independent of each other, as each records a specific collision where alcohol or drugs were either involved or not involved. The cells of the contingency table are mutually exclusive, and the expected value for 100% of the cells is greater than 5. Therefore, all assumptions of chi-square are met. (Expected values must be greater than 5 in at least 80% of the cells, and cannot go below 1). 
+
+```{r}
+chi_sq1$expected
+chi_sq2$expected
+```
 
 ### Intoxication and Time of Day
 
@@ -588,16 +641,24 @@ time_of_day <- alc_drug_involvement |>
 
 intox_vs_time_of_day <- table(time_of_day$time_of_day, time_of_day$alc_drugs)
 
-(chi_sq2 <- chisq.test(intox_vs_time_of_day))
+(chi_sq3 <- chisq.test(intox_vs_time_of_day))
 ```
 
 The p-value is 2.2e-16 which is very small and less than 0.05, so there is a relationship between collisions caused by driver intoxication and time of day. 
 
 ```{r}
-chi_sq2$expected
+chi_sq3$residuals
+
+assocplot(intox_vs_time_of_day, col = c("Green", "Grey"), space = 0.5, main = "Associations Between Driver Intoxication and Time of Day", xlab = "Time of Day", ylab = "Alcohol or Drugs Involved?")
 ```
 
-Accidents involving driver intoxication are more likely to occur in the evening (between 5 PM and 5 AM) than they are during the Morning or Afternoon. 
+There are more accidents that occur in the Evening than would be expected if there was no relationship. Accidents involving alcohol/drugs are associated with occurring in the Evening. 
+
+```{r}
+assocstats(intox_vs_time_of_day)
+```
+
+Cramer's V here is 0.085, which indicates a weak association. 
 
 ### Age and Gender vs. Collisions
 
@@ -660,6 +721,8 @@ drivers_2022 |>
 sd(males$person_age)
 sd(females$person_age)
 
+par(mfrow=c(1,2))
+
 qqnorm(males$person_age, main = "Normal Q-Q Plot - Males")
 qqline(males$person_age)
 
@@ -693,17 +756,11 @@ visualize(null_dist) + shade_p_value(obs_stat = obs_diff, direction = "two_sided
 
 The observed difference is way off from what we would expect to see if there was not a statistically significant relationship. Therefore, we can conclude that there is a significant difference in the mean ages of men and women who get involved in collisions. As such, there is a significant relationship between the ages of men and women in relation to being involved in collisions. Men who get into car accidents tend to be slightly older than women who get into car accidents.
 
-**Cohen's d:**
-
-```{r}
-(mean(males$person_age) - mean(females$person_age)) / sqrt((sd(males$person_age) + sd(females$person_age))/ 2)
-```
-
 ## Conclusions
 
-Based on the analysis of car crash data obtained from the New York City Police Department, this project identified driver inattention/distraction as the primary contributing factor for collisions, with 416,287 collisions recorded as being caused by one or more drivers who were distracted or not paying attention. Aside from this, alcohol abuse was found to be the main contributing factor for car crashes between the hours of 2-4 AM. Using a chi-square test of independence, the data provided evidence that there are significantly more accidents resulting in serious injury or death when there is alcohol or drugs involved than when there is no alcohol or drug involvement. 
+Based on the analysis of car crash data obtained from the New York City Police Department, this project identified driver inattention/distraction as the primary contributing factor for collisions, with 416,287 collisions recorded as being caused by one or more drivers who were distracted or not paying attention. Aside from this, alcohol abuse was found to be the main contributing factor for car crashes between the hours of 2-4 AM. Using a chi-square test of independence, the data provided evidence that there is a significant relationship between driver intoxication and severity of collisions. There is also association between driver intoxication and time of day. Both of these have weak associations. There may be other factors that are not included in the analysis that have a an impact on the number and severity of collisions. 
 
-The analysis also revealed a significant relationship between gender and age with respect to collisions. The data also showed a higher number of collisions caused by men than by women, with the median age of men involved in collisions (40) being higher than the median age of women involved in collisions (38). Using a two-sample t-test and visualizing with the null distribution, this difference was shown to be significant, with the average age of men involved in collisions being significantly higher than the average age of women involved in accidents. 
+The analysis also revealed a significant relationship between gender and age with respect to collisions. The data showed a higher number of collisions caused by men than by women, with the median age of men involved in collisions (40) being higher than the median age of women involved in collisions (38). Using a two-sample t-test and visualizing with the null distribution, this difference was shown to be significant, with the average age of men involved in collisions being significantly higher than the average age of women involved in accidents. 
 
 According to the data, Brooklyn and Queens had the largest percentage of collisions in the data set. The zipcode with the highest number of collisions in Brooklyn was 11207, located in East New York. The highest number of collisions in Queens occurred in Jamaica and Flushing. This type of analysis, along with determining streets or cross roads with high densities of collisions occurring, can allow city planners and policymakers to determine areas where traffic safety measures need to be implemented, such as increasing the number of traffic signals or improving road signs, etc. 
 
