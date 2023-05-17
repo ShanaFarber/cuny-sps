@@ -81,7 +81,7 @@ crashes <- crashes_data |>
 
 # choose desired columns
 person <- person_data |>
-  select("person_id" = unique_id, collision_id, crash_date, crash_time, person_type, position_in_vehicle, person_age, person_sex)
+  select("person_id" = unique_id, collision_id, crash_date, crash_time, person_type, position_in_vehicle, person_injury, person_age, person_sex)
 ```
 
 #### Creating a Drivers Data Set
@@ -171,7 +171,9 @@ crashes_by_year |>
 
 There is an increase in the number of collisions until 2016 and then a decrease after 2018. The most collisions occurred in 2016-2018, with about 225,000 collisions occurring in each of these years. In 2020, the number of collisions decreased by almost 50% from the previous year, possibly owing to stay-at-home orders due to Covid-19. 
 
-### Fatalities and Injuries from Crashes
+### Fatalities and Injuries from Crashes {.tabset .tabset-fade .tabset-pills}
+
+#### Percentage of Crashes
 
 ```{r}
 injuries_and_fatalities <- crashes_till_22 |>
@@ -199,6 +201,30 @@ injuries_and_fatalities |>
 ```
 
 While the number of collisions seems to have decreased from 2018-2022, the percentage of collisions involving fatalities and/or injuries has increased, with almost 40% of collisions in 2022 involving injuries and about 0.3% of crashes involving deaths. 
+
+#### Number of Injuries/Fatalities
+
+```{r}
+crashes_till_22 |>
+  mutate(year = year(crash_date),
+         injury = ifelse(number_persons_injured > 0, 1, 0),
+         death = ifelse(number_persons_killed > 0, 1, 0)) |>
+  group_by(year) |>
+  summarize(tot_injured = sum(number_persons_injured, na.rm=T),
+            tot_killed = sum(number_persons_killed, na.rm=T)) |>
+  ungroup() |>
+  pivot_longer(cols = c(tot_injured:tot_killed),
+               names_to = "severity",
+               values_to = "num_persons") |>
+  mutate(severity = toupper(str_extract(severity, "killed|injured"))) |>
+  ggplot(aes(x = as.factor(year), y = num_persons, fill = severity)) +
+  geom_bar(stat="identity") +
+  labs(title = "Number of People Injured/Killed per Year (2012-2022)", x = "Year", y = "Number of People Injured/Killed in Collisions") +
+  scale_y_continuous(label = scales::comma) +
+  geom_text(aes(label = num_persons), vjust = -0.5, size=3)
+```
+
+Even though the relative number of collisions decreased over the years, the number of people injured/killed in collisions has not much changed. The greatest number of fatalities are in 2020, 2021, and 2022, even though these years had the lowest number of collisions.
 
 ### Collisions by Borough {.tabset .tabset-fade .tabset-pills}
 
@@ -574,7 +600,7 @@ The p-value here is less than 2.2e-16 which is much less than 0.05 so there is a
 ```{r}
 chi_sq1$residuals
 
-assocplot(serious_injuries_intox_or_not, col = c("Green", "Grey"), space = 0.5, main = "Associations Between Driver Intoxication and Collisions Severity", xlab = "Injuries or Death?", ylab = "Alcohol or Drugs Involved?")
+assocplot(serious_injuries_intox_or_not, col = c("green", "grey"), space = 0.5, main = "Associations Between Driver Intoxication and Collisions Severity", xlab = "Injuries or Death?", ylab = "Alcohol or Drugs Involved?")
 
 assocstats(serious_injuries_intox_or_not)
 ```
@@ -649,7 +675,7 @@ The p-value is 2.2e-16 which is very small and less than 0.05, so there is a rel
 ```{r}
 chi_sq3$residuals
 
-assocplot(intox_vs_time_of_day, col = c("Green", "Grey"), space = 0.5, main = "Associations Between Driver Intoxication and Time of Day", xlab = "Time of Day", ylab = "Alcohol or Drugs Involved?")
+assocplot(intox_vs_time_of_day, col = c("green", "grey"), space = 0.5, main = "Associations Between Driver Intoxication and Time of Day", xlab = "Time of Day", ylab = "Alcohol or Drugs Involved?")
 ```
 
 There are more accidents that occur in the Evening than would be expected if there was no relationship. Accidents involving alcohol/drugs are associated with occurring in the Evening. 
@@ -659,6 +685,42 @@ assocstats(intox_vs_time_of_day)
 ```
 
 Cramer's V here is 0.085, which indicates a weak association. 
+
+### Gender and Alcohol/Drug Involved Collisions
+
+While I wanted to see the breakdown of male vs female intoxicated drivers, one of the limitations of the data set is that there is no indication in the **person** data set as to which vehicle number they were assigned on the MV-104 form (i.e. `contributing_factor_vehicle_x`). Therefore, we cannot match the people to their main contributing factor in each collision. (While there is a contributing factor column for the **person** data set, it is not as robust as the contributing factor columns from the **crashes** data set).
+
+Instead, let's look to see which drivers are mostly involved in collisions that have alcohol involved (regardless of whether they were the intoxicated driver) and let's see who is more likely to be injured/killed in collisions involving alcohol/drugs.
+
+**Drivers Involved in Collisions Involving Alcohol or Drugs**
+
+```{r}
+person_alc_drugs <- alc_drug_involvement |>
+  select(-crash_date, -crash_time, -borough) |>
+  right_join(person, by = "collision_id") |>
+  filter(!is.na(person_sex), 
+         alc_drugs == "Alc/Drugs",
+         person_type == "Occupant",
+         person_sex %in% c("M", "F"))
+
+person_alc_drugs |>
+  filter(position_in_vehicle == "Driver") |>
+  ggplot(aes(y = person_sex, fill = person_sex)) +
+  geom_bar() +
+  scale_x_continuous(label = scales::comma) +
+  labs(title = "Drivers Involved in Alcohol/Drug Related Collisions*", x = "Count", y = "Driver Gender", caption = "*Regardless of if they were the intoxicated driver")
+```
+
+**People Injured/Killed in Collisions Involving Alcohol or Drugs**
+
+```{r}
+person_alc_drugs |>
+  filter(person_injury %in% c("Killed", "Injured")) |>
+  ggplot(aes(y = person_sex, fill = person_sex)) +
+  geom_bar() +
+  scale_x_continuous(label = scales::comma) +
+  labs(title = "People Injured/Killed in Alcohol/Drug Related Collisions", x = "Count", y = "Gender")
+```
 
 ### Age and Gender vs. Collisions
 
