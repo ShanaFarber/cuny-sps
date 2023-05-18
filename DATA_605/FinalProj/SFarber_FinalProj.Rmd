@@ -1,0 +1,727 @@
+---
+title: "DATA 605 - Final Project"
+author: "Shoshana Farber"
+date: "May 17, 2023"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+
+library(tidyverse)
+library(ResourceSelection)
+library(matrixcalc)
+library(MASS)
+library(car)
+```
+
+## Problem 1
+
+### Generate Distributions
+
+**Probability Density 1: X~Gamma.** Using R, generate a random variable $X$ that has 10,000 random Gamma pdf values. A Gamma pdf is completely described by $n$ (a size parameter) and $\lambda$ (a shape parameter). Choose any $n$ greater than 3 and an expected value ($\lambda$) between 2 and 10.
+
+```{r gamma-dist}
+set.seed(123)
+lambda <- 2
+n <- 8
+
+X <- rgamma(10000, n, lambda)
+
+hist(X, main = "Randomely Generated Gamma Distribution")
+```
+
+**Probability Density 2: Y~Sum of Exponentials.** Generate 10,000 observations from the sum of $n$ exponential pdfs with a rate/shape parameter ($\lambda$). The $n$ and $\lambda$ must be the same as in the previous case. 
+
+```{r sum-of-exp}
+set.seed(123)
+Y <- rexp(10000, lambda) + rexp(10000, lambda) + rexp(10000, lambda) + rexp(10000, lambda) + rexp(10000, lambda) + rexp(10000, lambda) + rexp(10000, lambda) + rexp(10000, lambda)
+
+hist(Y)
+```
+
+**Probability Density 3: Z~Exponential.** Generate 10,000 observations from a single exponential pdf with rate/shape parameter ($\lambda$). 
+
+```{r}
+set.seed(123)
+Z <- rexp(10000, lambda)
+
+hist(Z, main = "Randomely Generated Exponential Distribution")
+```
+
+### Empirical and Calculated Means and Variance
+
+1a. Calculate the empirical expected value (means) and variances of all three pdfs.
+
+```{r means-variances}
+mean(X)
+var(X)
+
+mean(Y)
+var(Y)
+
+mean(Z)
+var(Z)
+```
+
+1b. Using calculus, calculate the expected value and variance of the Gamma pdf (X). Using the moment generating function for exponential, calculate the expected value of the single exponential (Z) and the sum of exponential (Y). 
+
+**Gamma Distribution:**
+
+$E(x) = {n \over \lambda}$ and $\sigma^2 = {n \over \lambda^2}$. 
+
+```{r}
+n/lambda
+n/lambda^2
+```
+
+***Single Exponential:***
+
+$$
+f(x) = \begin{cases}
+  \lambda e^{-\lambda x} & x \ge 0 \\
+  0 & x < 0
+\end{cases}
+$$
+
+**Moment Generating Function:**
+
+$M_{x}(t) = E(e^{xt}) = \int_{-\infty}^{+\infty} e^{xt} f(x) dx = \int_{-\infty}^{0} e^{xt} 0 dx + \int_{0}^{+\infty} e^{xt} \lambda e^{-\lambda x} dx$
+
+$\hspace{28pt} = \lambda \int_{0}^{\infty} e^{(t - \lambda)x} dx$
+
+$\hspace{28pt} = {\lambda \over t - \lambda} [e^{(t - \lambda)x}]_{0}^{\infty}$
+
+$\hspace{28pt} = {\lambda \over t - \lambda} [0-1]$
+
+$\hspace{28pt} = \boxed {{\lambda \over \lambda - t}}$
+
+**Expected Value and Variance:**
+
+$M_{x}^{'}(t) = \lambda (\lambda - t)^{-2}$
+
+$M_{x}^{'}(0) = \lambda (\lambda - 0)^{-2}$
+
+$\hspace{28pt} = \lambda (\lambda)^{-2}$
+
+$\hspace{28pt} = \boxed {\lambda^{-1} = E(X)}$
+
+$M_{x}^{''}(t) = 2 \lambda (\lambda - t)^{-3}$
+
+$M_{x}^{''}(0) = 2 \lambda (\lambda - 0)^{-3}$
+
+$\hspace{28pt} = 2 \lambda (\lambda)^{-3}$
+
+$\hspace{28pt} = 2\lambda^{-2} = E(X^2)$
+
+$\sigma^{2} = 2\lambda^{-2} - (\lambda^{-1})^2$
+
+$\hspace{13pt} = {2 \over \lambda^2} - {1 \over \lambda^2}$
+
+$\hspace{13pt} = {1 \over \lambda^2}$
+
+$\hspace{13pt} = \boxed {\lambda^{-2} = \sigma^{2}}$
+
+```{r}
+# single exponential
+lambda**(-1)
+lambda**(-2)
+```
+
+### Sum of Exponentials
+
+For the moment generating function of the sum of $n$ exponentials, multiply the moment generating function of the single exponential $n$ times.
+
+**Moment Generating Function:**
+
+$M_{x}(t) = ({\lambda \over \lambda - t})^{8}$
+
+**Expected Value and Variance:**
+
+$M_{x}'(t) = 8({\lambda \over \lambda - t})^{7} \cdot \lambda (\lambda - t)^{-2}$
+
+$M_{x}'(0) = 8({\lambda \over \lambda - 0})^{7} \cdot \lambda (\lambda - 0)^{-2}$
+
+$\hspace{28pt} = \boxed{8 \lambda^{-1} = E(x)}$
+
+$M_{x}''(t) = [8({\lambda \over \lambda - t})^{7}][{2 \over \lambda^2}] + [\lambda (\lambda - t)^{-2}][56({\lambda \over \lambda - t})^{6} \cdot \lambda (\lambda - t)^{-2}]$
+
+$M_{x}''(0) = [8({\lambda \over \lambda - 0})^{7}][{2 \over \lambda^2}] + [\lambda (\lambda - 0)^{-2}][56({\lambda \over \lambda - 0})^{8} \cdot \lambda (\lambda - 0)^{-2}]$
+
+$\hspace{28pt} = {16 \over \lambda^2} + {56 \over \lambda^2}$
+
+$\hspace{28pt} = 72 \lambda^{-2} = E(X^2)$
+
+$\sigma^2 = 72 \lambda^{-2} - (8 \lambda^{-1})^2$
+
+$\hspace{13pt} = \boxed{8 \lambda^{-2} = \sigma^2}$
+
+
+```{r}
+n*(lambda**-1)
+n*(lambda**-2)
+```
+
+1c-e. _Probability._ For pdf Z (exponential), calculate empirically probabilities a-c. Then evaluate through calculus whether the memoryless property holds. 
+
+$$
+P(A|B) = {P(A \hspace{2pt} \cap \hspace{2pt} B) \over P(B)} = P(A|B) = {P(B|A)P(A) \over P(B)}
+$$
+
+**a.** $P(Z > \lambda | Z > {\lambda \over 2})$
+
+$P(Z > \lambda | Z > {\lambda \over 2}) = {P(Z > {\lambda \over 2} | Z > \lambda)P(Z > \lambda) \over P(Z > {\lambda \over 2})}$
+
+$P(Z > {\lambda \over 2} \hspace{2pt} | \hspace{2pt} Z > \lambda) = 1$ 
+$P(Z > \lambda | Z > {\lambda \over 2}) = {P(Z > \lambda) \over P(Z > {\lambda \over 2})}$
+
+Rather than calculate for $P(Z > \lambda)$ and $P(Z > {\lambda \over 2})$, calculate for $1 - P(Z \le \lambda)$ and $1 - P(Z \le {\lambda \over 2})$
+
+I also calculated each of these based on the definition of the exponential distribution.
+
+```{r}
+p_a <- length(which(Z>lambda)) / length(Z)
+p_b <- length(which(Z>lambda/2)) / length(Z)
+
+p_a / p_b
+
+(1-pexp(lambda, lambda)) / (1-pexp(lambda/2, lambda))
+```
+
+**b.** $P(Z > 2 \lambda | Z > \lambda)$
+
+$P(Z > 2 \lambda | Z > \lambda) = {P(Z > \lambda | Z > 2 \lambda)P(Z > 2 \lambda) \over P(Z > \lambda)}$
+
+$P(Z > \lambda \hspace{2pt} | \hspace{2pt} Z > 2 \lambda) = 1$
+
+$P(Z > 2 \lambda | Z > \lambda) = {P(Z > 2 \lambda) \over P(Z > \lambda)} = {1 - P(Z \le 2 \lambda) \over 1 - P(Z \le \lambda)}$
+
+```{r}
+p_a <- length(which(Z>2*lambda)) / length(Z)
+p_b <- length(which(Z>lambda)) / length(Z)
+
+p_a / p_b
+
+(1-pexp(2*lambda, lambda)) / (1-pexp(lambda, lambda))
+```
+
+**c.** $P(Z > 3 \lambda | Z > \lambda)$
+
+$P(Z > 3 \lambda | Z > \lambda) = {P(Z > 3 \lambda) \over P(Z > \lambda)} = {1 - P(Z \le 3 \lambda) \over 1 - P(Z \le \lambda)}$
+
+```{r}
+p_a <- length(which(Z>3*lambda)) / length(Z)
+p_b <- length(which(Z>lambda)) / length(Z)
+
+p_a / p_b
+
+(1-pexp(3*lambda, lambda)) / (1-pexp(lambda, lambda))
+```
+
+**Memoryless Property:**
+
+The memoryless property says that $P(X > r + t \hspace{2pt} | \hspace{2pt} X > r) = P(X > t)$. 
+
+Let's use a randomly defined $t = 3$. $r$ is the inverse of the rate, so for this problem $r = n$. 
+
+$P(X > n + t \hspace{2pt} | \hspace{2pt} X > n)$
+
+```{r}
+t <- 3
+
+(1-pexp(n+t, lambda)) / (1-pexp(n, lambda))
+```
+
+$P(X > t)$
+
+```{r}
+(1-pexp(t, lambda))
+```
+
+The probabilities are the same, so the memoryless property holds. 
+
+### Independence Tests
+
+**Loosely investigate whether** $P(YZ) = P(Y)P(Z)$ **by building a table with quartiles and evaluating the marginal and joint probabilities.**
+
+```{r}
+# find quantiles
+quantile_Y <- matrix(c(quantile(Y, probs = c(0, .25, .5, .75, 1))))
+quantile_Z <- matrix(c(quantile(Z, probs = c(0, .25, .5, .75, 1))))
+
+cont_table <- table(cut(Y, quantile_Y), cut(Z, quantile_Z))
+
+joint_prob <- prop.table(cont_table)
+
+row_sums <- rowSums(joint_prob)
+col_sums <- c(colSums(joint_prob), 0)
+
+joint_prob_marg <- cbind(joint_prob, row_sums)
+joint_prob_marg <- rbind(joint_prob_marg, col_sums)
+joint_prob_marg[5,5] <- sum(joint_prob)
+
+colnames(joint_prob_marg) <- c("Quant 1 Y", "Quant 2 Y", "Quant 3 Y", "Quant 4 Y", "Sum")
+rownames(joint_prob_marg) <- c("Quant 1 Z", "Quant 2 Z", "Quant 3 Z", "Quant 4 Z", "Sum")
+
+joint_prob_marg
+
+matrix(joint_prob_marg[1:4,5]) %*% t(matrix(joint_prob_marg[5,1:4]))
+```
+
+We can see that $P(YZ) \ne P(Y)P(Z)$ which suggest dependence for Y and Z. 
+
+**Check to see if independence holds by using Fisher's Exact Test and Chi Square Test. What is the difference between the two? Which is more appropriate?**
+
+```{r}
+#fisher
+fisher.test(cont_table, simulate.p.value = T)
+
+# chi square
+chisq.test(cont_table)
+```
+
+Based on the p-value of both of these tests, we can see that there is dependence. 
+
+Fisher test performs better for smaller samples while Chi Square is better used for larger samples and a larger contingency table. Chi Square would be more appropriate here as it is a larger contingency table and a large sample size. 
+
+## Problem 2
+
+Data taken from https://www.kaggle.com/c/house-prices-advanced-regression-techniques. 
+
+```{r}
+train_data <- read.csv(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_605/FinalProj/train.csv"))
+```
+
+Let's first split the training data into training and validating data sets. 
+
+```{r}
+# 80% train data
+set.seed(123)
+num_fit <- .8 * nrow(train_data)
+
+sample <- sample(1:nrow(train_data), num_fit, replace = F)
+
+train <- train_data[sample,]
+validate <- train_data[-sample,]
+
+rownames(train) <- train$Id
+
+train <- train |>
+  dplyr::select(-Id)
+
+rmarkdown::paged_table(train, options = list(rows.print = 5))
+```
+
+### Descriptive and Inferential Statistics
+
+**Provide univariate descriptive statics and appropriate plots for the training data set.** 
+
+```{r}
+glimpse(train)
+```
+
+Most of the variable are categorical. 
+
+Let's take a look at the distributions for the numeric columns first. 
+
+```{r}
+numeric_train <- train[,sapply(train, is.numeric)]
+
+# descriptive statistics
+summary(numeric_train)
+```
+
+Distribution of sale prices:
+
+```{r}
+train |>
+  ggplot(aes(x = SalePrice)) +
+  geom_histogram(fill = "steelblue", bins = 30) +
+  scale_x_continuous(label = scales::comma) +
+  labs(title = "Distribution of House Prices", x = "Sale Price", y = "Count")
+```
+
+Sale prices are centered about $175K and has a right skew. 
+
+```{r}
+par(mfrow=c(3,3))
+par(mai=c(.3,.3,.3,.3))
+
+variables <- names(numeric_train)
+
+for (i in 1:(length(variables)-1)) {
+  hist(numeric_train[[variables[i]]], main = variables[i], col = "lightblue")
+}
+```
+
+There are a number of skewed variables. We can try log transformations to some variables to try and normalize. 
+
+Now let's look at the categorical variables. 
+
+```{r}
+char_train <- train[,sapply(train, is.character)]
+char_train$SalePrice <- train$SalePrice
+
+variables <- names(char_train)
+
+for (i in 1:(length(variables)-1)) {
+  char_train[[variables[i]]] <- as.factor(char_train[[variables[i]]])
+}
+
+char_train |>
+  dplyr::select(-SalePrice) |>
+  summary()
+```
+
+There are a number of variables with NA values. Specifically, `Alley`, `PoolQC`, `MiscFeature`, `Fence`, and `FireplaceQu` have a lot of NA values. 
+
+```{r}
+par(mfrow=c(2,2))
+par(mai=c(.3,.3,.3,.3))
+
+for (i in 1:(length(variables)-1)) {
+  boxplot(char_train$SalePrice~char_train[[variables[i]]], main = variables[i])
+}
+```
+
+`MSZoning` may have an affect on `SalePrice`. There is also a lot of variability in price based on `Neighborhood`, `ExterQUal`, `BsmntQual`, `KitchenQual`, and `CentralAir`. 
+
+### Scatterplot Matrix
+
+**Provide a scatterplot matrix for at least two of the independent variables and the dependent variable.** 
+
+Let's make a scatterplot matrix for some of the numeric varaibles. 
+
+```{r}
+subset_train <- train |>
+  dplyr::select(SalePrice, OverallQual, LotArea, X1stFlrSF, GrLivArea, FullBath, TotRmsAbvGrd, GarageArea)
+
+pairs(subset_train, gap = 0.5)
+```
+
+### Correlation Matrix
+
+**Derive a correlation matrix for _any_ three quantitative variables in the data set.**
+
+```{r}
+cor_subset <- subset_train |>
+  dplyr::select(SalePrice, GrLivArea, FullBath)
+
+par(mfrow = c(1,3))
+
+plot(SalePrice~GrLivArea, cor_subset) +
+  abline(lm(SalePrice~GrLivArea, cor_subset), col = "red")
+
+plot(SalePrice~FullBath, cor_subset) +
+  abline(lm(SalePrice~FullBath, cor_subset), col = "red")
+
+plot(GrLivArea~FullBath, cor_subset) +
+  abline(lm(GrLivArea~FullBath, cor_subset), col = "red")
+
+(cor_matrix <- cor(cor_subset))
+```
+
+**Test the hypothesis that the correlation between each pairwise set of variables is 0 and provide an 80% confidence interval. Discuss the meaning of your analysis. Would you be worried about familywise error? Why or why not?**
+
+```{r}
+cor.test(cor_subset$SalePrice, cor_subset$GrLivArea, conf.level = 0.8)
+```
+
+The correlation is 0.709 with a p-value of less than 2.2e-16, so this is a significant correlation. 
+
+**CI[0.692, 0.725]:** We are 80% confident that the true correlation lies within the range of 0.692 and 0.725.
+
+```{r}
+cor.test(cor_subset$SalePrice, cor_subset$FullBath, conf.level = 0.8)
+```
+
+The correlation is 0.561 with a p-value of less than 2.2e-16, so this is a significant correlation. 
+
+**CI[0.537, 0.583]:** We are 80% confident that the true correlation lies within the range of 0.537 and 0.583.
+
+```{r}
+cor.test(cor_subset$GrLivArea, cor_subset$FullBath, conf.level = 0.8)
+```
+
+The correlation is 0.630 with a p-value of less than 2.2e-16, so this is a significant correlation. 
+
+**CI[0.609, 0.650]:** We are 80% confident that the true correlation lies within the range of 0.609 and 0.650.
+
+All three pairwise sets have significant correlations. There is a strong correlation between sale price and above grade living area (71% correlated). There is a moderate correlation between sale price and total number of full bathrooms (56% correlated) and between above grade living area and total number of full bathrooms (63% correlated). 
+
+**Family Wise Error Rate (FWE):**
+
+The formula for calculating family wise error can be found [here](https://www.statisticshowto.com/familywise-error-rate/). 
+
+$FWE \le 1 - (1 - \alpha)^c$ where $\alpha$ is your chosen confidence level and $c$ is the number of correlation tests. 
+
+We use an 80% confidence interval, so $\alpha = 0.2$, and we conducted three tests. 
+
+```{r}
+a <- 0.2
+c <- 3
+
+1-(1-a)**c
+```
+
+The family wise error here is 0.488, so there is a 48.8% chance that we made a Type I error in at least one of the correlation tests above. This is a very high likelihood and so I would be very concerned about familywise error here. 
+
+### Linear Algebra and Correlation
+
+**Invert your correlation matrix from above. (This is known as a precision matrix and contains variance inflation factors on the diagonal.)**
+
+```{r}
+# precision matrix - inverse of correlation matrix
+(prec_matrix <- solve(cor_matrix))
+```
+
+**Multiply the correlation matrix by the precision matrix, and then multiply the precision matrix by the correlation matrix.**
+ 
+```{r}
+prec_matrix %*% cor_matrix
+
+cor_matrix %*% prec_matrix
+```
+
+**Conduct LU decomposition on the matrix.**
+
+```{r}
+lu.decomposition(prec_matrix)
+```
+
+### Calculus-Based Probability & Statistics: 
+
+Many times, it makes sense to fit a closed form distribution to data. **Select a variable in the Kaggle.com training dataset that is skewed to the right, shift it so that the minimum value is absolutely above zero if necessary. Then load the MASS package and run `fitdistr()` to fit an exponential probability density function.** 
+
+Chosen variable: *`SalePrice`*
+
+```{r}
+# histogram original
+hist(train$SalePrice)
+
+# fit exponential pdf
+(fit <- fitdistr(train$SalePrice, "exponential"))
+```
+
+**Find the optimal value of** $\lambda$ **for this distribution, and then take 1,000 samples from this exponential distribution using this value (e.e, rexp(1000,** $\lambda$**)).** 
+
+```{r}
+lambda <- fit$estimate
+
+# exponential dist
+exp_dist <- rexp(1000, lambda)
+```
+
+**Plot a histogram and compare it with the histogram of your original variable.** 
+
+```{r}
+par(mfrow = c(1,2))
+hist(train$SalePrice, main = "Histogram of SalePrice")
+hist(exp_dist, main = "Histogram of Exponential")
+```
+
+**Using the exponential pdf, find the 5th and 95th percentiles using the cumulative distribution function (CDF). Also generate a 95% confidence interval from the empirical data, assuming normality. Finally, provide the empirical 5th percentile and 95th percentile of the data. Discuss.**
+
+```{r}
+# percentiles using CDF
+quantile(exp_dist, c(.05, .95))
+
+# conf interval of empirical data
+t.test(train$SalePrice)$conf.int
+
+# empirical percentiles
+quantile(train$SalePrice, c(.05, .95))
+```
+
+There is a signicant difference between the quantiles for the generated exponential distribution and the quantiles for the empirical data. This suggests that the `SalePrices` does not closely follow the exponential distribution. 
+
+### Modeling
+
+**Build some type of multiple regression model and submit your model to the competition board. Provide your complete model summary and results with your analysis. Report your Kaggle.com username and score.**
+
+```{r}
+kdepairs(subset_train)
+```
+
+
+```{r}
+trans_train <- subset_train |>
+  mutate(log_LotArea = log(LotArea))
+
+par(mfrow = c(1,2))
+hist(subset_train$LotArea, main = "Original")
+hist(trans_train$log_LotArea, main = "Log Transformed")
+```
+
+```{r}
+# remove extreme outliers from LotArea
+iqr <- IQR(subset_train$LotArea)
+
+summary(subset_train$LotArea)
+
+trans_train <- trans_train |>
+  mutate(LotArea_filtered = ifelse(LotArea >= 11602 + (1.5*iqr) | LotArea <= 7554 - (1.5*iqr), NA, LotArea))
+
+par(mfrow = c(1,2))
+boxplot(subset_train$LotArea, main = "Original")
+boxplot(trans_train$LotArea_filtered, main = "Filtered for Outliers")
+
+summary(trans_train$LotArea_filtered)
+```
+
+```{r}
+par(mfrow = c(1,2))
+
+plot(trans_train$SalePrice~trans_train$log_LotArea, main = "Log Transformed") +
+  abline(lm(trans_train$SalePrice~trans_train$log_LotArea), col = "red")
+
+plot(trans_train$SalePrice~trans_train$LotArea_filtered, main = "Filtered") +
+  abline(lm(trans_train$SalePrice~trans_train$LotArea_filtered), col = "red")
+```
+
+Apply log transformation to normalize `X1stFlrSF` and `GrLivArea` and check to see how correlation changes.
+
+```{r}
+trans_train |>
+  dplyr::select(-LotArea_filtered) |>
+  mutate(log_X1stFlrSF = log(X1stFlrSF),
+         log_GrLivArea = log(GrLivArea)) |>
+  kdepairs()
+```
+
+The transformed variables are less correlated than the original variables. This is probably because `SalePrice` itself is skewed. The log transformed `LotArea` is more correlated than the original.  
+
+#### Build Initial Model
+
+```{r}
+test_lm <- lm(SalePrice ~ OverallQual + log(LotArea) + GrLivArea + X1stFlrSF + FullBath + TotRmsAbvGrd + GarageArea + MSZoning + Neighborhood + ExterQual + KitchenQual + CentralAir + CentralAir*GrLivArea, train)
+
+summary(test_lm)
+```
+
+The model accounts for about 82% of the variability within the data. 
+
+#### Improve Model
+
+Let's see if we can improve the model using a backward stepwise approach. 
+
+```{r}
+better_lm <- step(test_lm, direction = "backward")
+
+summary(better_lm)
+```
+
+The model performs the same but removed `GrLivArea`, `FullBath`, and `MSZOning`.
+
+```{r}
+par(mfrow = c(1,2))
+plot(better_lm, which = c(1,2))
+```
+
+The fitted vs residuals plot has a slight curve and there are some outlying residuals. There also seems issues in the tails of the residuals.
+
+```{r}
+vif(better_lm, type = "predictor")
+```
+
+There is very high collinearity for `LotArea`. Let's remove this predictor. 
+
+```{r}
+update_lm <- update(better_lm, .~. - log(LotArea))
+
+summary(update_lm)
+```
+
+The $R^2$ is not much changed.
+
+```{r}
+vif(update_lm)
+```
+
+It seems we have gotten rid of some collinearity issues. 
+
+```{r}
+par(mfrow = c(1,2))
+plot(update_lm, which = c(1,2))
+```
+
+#### Validate Model
+
+Let's see how the model performs so far.
+
+```{r}
+validate$predictSalePrice <- predict(update_lm, validate)
+
+se <- (validate$predictSalePrice - validate$SalePrice)**2
+
+(RMSE <- sqrt(mean(se)))
+```
+
+Let's look back at the data and see if there is anything we can add to improve the model.
+
+```{r}
+par(mfrow = c(1,3))
+boxplot(train$SalePrice~as.factor(train$MSSubClass))
+boxplot(train$SalePrice~as.factor(train$MoSold))
+boxplot(train$SalePrice~as.factor(train$YrSold))
+```
+
+```{r}
+update_lm <- lm(SalePrice ~ OverallQual + GrLivArea + X1stFlrSF + TotRmsAbvGrd + GarageArea + Neighborhood + ExterQual + KitchenQual + GrLivArea:CentralAir + HouseStyle + MSSubClass, train)
+
+summary(update_lm)
+
+best_lm <- step(update_lm, direction = "backward")
+
+vif(best_lm)
+
+validate$predictSalePrice <- predict(best_lm, validate)
+
+se <- (validate$predictSalePrice - validate$SalePrice)**2
+
+(RMSE <- sqrt(mean(se)))
+```
+
+We reduced the RMSE slightly. 
+
+This was my initial model for submission, however I noticed that there were 2 NA values in the predictions from this model. Upon examination, there was one column with an NA value for `KitchenQual` and one column with an NA value for `GarageArea`. I removed these variables from the model.
+
+```{r}
+update_lm <- update(best_lm, .~. - KitchenQual - GarageArea)
+
+best_lm <- step(update_lm, direction = "backward")
+
+summary(best_lm)
+
+validate$predictSalePrice <- predict(best_lm, validate)
+
+se <- (validate$predictSalePrice - validate$SalePrice)**2
+
+(RMSE <- sqrt(mean(se)))
+```
+
+The $R^2$ value decreased slightly and the RMSE increased slightly, but not by too much for the model to be much affected. 
+
+#### Test Model - Predictions
+
+```{r}
+test <- read.csv(url("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_605/FinalProj/test.csv"))
+
+test$SalePrice <- predict(best_lm, test)
+```
+
+**Results:**
+
+```{r, echo=F}
+knitr::include_graphics("C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_605/FinalProj/submission_results.png")
+```
+
+```{r eval=F}
+predictions <- data.frame("Id" = test$Id, 
+                          "SalePrice" = test$SalePrice)
+
+write.csv(predictions, "C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_605/FinalProj/predictions.csv", row.names = F)
+```
