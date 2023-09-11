@@ -1,0 +1,1 @@
+Works and assignments done for DATA 608 course - Knowledge and Visual Analytics.
