@@ -1,0 +1,175 @@
+---
+title: "DATA 608 - Story 1"
+author: "Shoshana Farber"
+date: "2023-09-10"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+```
+
+## Assignment Details
+
+This assignment is based on data on the present allocation of the Infrastructure Investment and Jobs Act (IIJA) funding by State and Territory. The goal of the assignment is to use data visualizations to address the following questions:
+
+- Is the allocation equitable based on the population of each of the States and Territories, or is bias apparent?
+- Does the allocation favor the political interests of the Biden administration?
+
+In addition to the provided data set for IIJA funding, this assignment also requires data on the current population estimates for US states and territories and 2020 election results.  
+
+To answer these questions, let's first load the IIJA funding data that was provided into a data frame. 
+
+```{r load-funding}
+funding <- read.csv("C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_608/Story1/IIJA_funding_as_of_March_2023.csv")
+```
+
+Let's take a look at this data frame.
+
+```{r preview-funding}
+head(funding)
+```
+
+The first column is the name of the state, territory, or tribal nation. The second column is the allocated amount of funding in billions. Let's clean up the column names to be more easily reference by changing them to snakecase. 
+
+```{r clean-funding}
+names(funding) <- snakecase::to_snake_case(names(funding))
+```
+
+```{r}
+summary(funding)
+```
+
+Now let's load in population estimates for US states and territories for 2023. The values for current population estimates were taken from [worldpopulationreview.com](https://worldpopulationreview.com/) which gets its information from the US Census Bureau. I could not find current population estimates for Tribal Communities in America. 
+
+```{r load-pops}
+pop_estimates_2023 <- read.csv("C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_608/Story1/current_pop_estimates.csv")
+```
+
+Let's take a look at this data. 
+
+```{r preview-pops}
+head(pop_estimates_2023)
+```
+
+Like with the IIJA funding dataset, let's clean up these column names. 
+
+```{r clean-pops}
+names(pop_estimates_2023) <- snakecase::to_snake_case(names(pop_estimates_2023))
+```
+
+### State Funding vs. State Population
+
+```{r fig.width=10, fig.height=7}
+funding |>
+  ggplot(aes(y = state_teritory_or_tribal_nation, x = total_billions)) +
+  geom_bar(stat = "identity") +
+  labs(title = "IIJA Funding as of March 2023", 
+       x = "Total Funding (Billions)", 
+       y = "State, Territory, or Tribal Nation")
+```
+
+```{r fig.width=10, fig.height=7, warning=F}
+pop_estimates_2023 |>
+  ggplot(aes(y = state_teritory_or_tribal_nation, x = estimated_population)) +
+  geom_bar(stat = "identity") +
+  labs(title = "2023 State Population Estimates", 
+       x = "Population Estimate", 
+       y = "State, Territory, or Tribal Nation") +
+  scale_x_continuous(labels = scales::comma)
+```
+
+### Funding Per Capita
+
+We can see from the above visualizations that while some states seem to have a proportionate allocation of funding per population size, most notably Texas and California, there are some states which seem to have a disproportionately larger allocation than would seem warranted by their population size. 
+
+Let's take a deeper look into this by plotting the distribution per capita for each state. To do this we can join the data frames and divide the billions in funding by the population size for each state/territory. 
+
+```{r join-tables}
+joined <- funding |>
+  left_join(pop_estimates_2023, by = "state_teritory_or_tribal_nation") |>
+  mutate("per_capita_funding" = (total_billions * 1000000000) / estimated_population)
+
+head(joined)
+```
+
+We can then use a bar graph to visualize the differences in the per capita funding. We will include a median line to see where funding per capita would be expected to fall out if the distribution was equitable.  
+
+```{r fig.width=10, fig.height=7}
+stats <- summary(joined$per_capita_funding)
+
+joined |>
+  ggplot(aes(y = state_teritory_or_tribal_nation, x = per_capita_funding)) +
+  geom_bar(stat = "identity") +
+  labs(title = "USA Per Capita Funding as of March 2023", 
+       x = "Per Capita Funding (Dollars)", 
+       y = "State, Territory, or Tribal Nation") +
+  geom_vline(xintercept = stats["Median"], color = "red", linetype = "dashed") +
+  geom_text(aes(x = stats["Median"], y = -1, label = paste("Median =", round(stats["Median"], 2))),
+            vjust = -0.5, hjust = 0.5, size = 4, color = "red")
+```
+
+We can see from this visualization that there are a fair amount of states whose funding per capita falls way above the median line. Alaska has a per capita funding of more than five thousand dollars (more than eight times the median amount). Other states or territories, like Wyoming, West Virginia, Vermont, the US Virgin Islands, South Dakota, Rhode Island, Northen Marina Islands, North Dakota, New Mexico, Montana, District of Colombia, and American Samoa seem to have distributions that are disproportionately high for the amount of people living in those states. Likewise, some states or territories, like Puerto Rico and Florida, have per capita funding that falls quite below the median line. This would seem to indicate that the distribution of funding according to the IIJA is not equitable according to state population size. 
+
+### State Funding vs. Political Party Affiliation
+
+Now, let's see whether the allocations seem to favor Biden's political interests by tracking state party affiliations. While American territories can participate in primaries to nominate election candidates, they do not vote in the actual election so we will be looking at only state party affiliations. First let's load in the 2020 election results using data from [CNN's election tracker](https://www.cnn.com/election/2020/results/president).
+
+```{r load-results}
+election_results <- read.csv("C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_608/Story1/election_results_2020.csv", na.strings = c(""))
+
+names(election_results) <- snakecase::to_snake_case(names(election_results))
+```
+
+```{r}
+joined <- joined |>
+  left_join(election_results, by = "state_teritory_or_tribal_nation")
+
+# just states
+states <- drop_na(joined)
+```
+
+Let's take a look at funding for Democrat vs. Republican states. 
+
+```{r}
+joined |>
+  group_by(party) |>
+  summarize(total = sum(total_billions)) |>
+  mutate(perc_funding = total / sum(total)) |>
+  ggplot(aes(x = party, y = perc_funding * 100, fill = party)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Funding Per Party", 
+       x = "Political Party", 
+       y = "Percentage of Total Allocations") +
+  scale_fill_manual(values = c("blue", "red", "grey")) +
+  geom_text(aes(label = paste0(round(perc_funding*100, 0),'%'), vjust = -0.2))
+```
+
+```{r}
+joined |>
+  count(party)
+```
+
+53% of funding goes towards Democrat states while 45% goes to Republican states and 2% goes towards other territories. The data indicates that 26 states swing more to Democrat while 25 swing towards Republican (here "states" includes Washington D.C.). This may seem to indicate that bias is shown towards Democratic states and that there is more funding allocated to these states. However, let's take a closer look at funding per capita for each of these states based on their political affiliations. 
+
+```{r fig.width=10, fig.height=6}
+states |>
+  ggplot(aes(y = reorder(state_teritory_or_tribal_nation, per_capita_funding), x = per_capita_funding, fill = result)) +
+  geom_bar(stat = "identity") +
+  labs(title = "USA Per Capita Funding as of March 2023", 
+       x = "Per Capita Funding (Dollars)", 
+       y = "State",
+       fill = "Elected Candidate 2020") +
+  scale_fill_manual(values = c("blue", "red")) 
+```
+
+Majority of states with an excess of funding seem to be affiliated with the Republican party (i.e. they voted for Trump in the 2020 election). This would seem to indicate that Biden is not favoring his own political party in these allocations. There are likely other reasons why the Biden administration would allocate these funds to these states as they have. More data would need to be collected to understand the reasoning behind these allocations, such as demographic and other infrastructure data. 
+
+### Conclusions
+
+Based on the graphs, it does not seem like there is equitable distribution of funds for states, as there are large disparities with regards to the per capita allocations for some states. While some states, such as California and Texas, received the largest amount of funding due to their large population size, their per capita allocations were relatively low compared to other, less densely populated states, such as Alaska and Wyoming. 
+
+However, funding does not either seem to be influenced by President Biden's political interests, as the top four states with the greatest allocation of funding per capita are all Republican states. More exploration would need to be done to determine other factors which may play a role in the allocation of these funds. 
