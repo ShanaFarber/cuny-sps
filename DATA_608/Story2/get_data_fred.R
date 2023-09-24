@@ -42,7 +42,7 @@ data <- cpi |>
   left_join(fed_fund_rate, by = "date")
 
 # find annual averages and calculate annual 
-# inflation rate = ((current cpi) - (previous cpi) / previous cpa) * 100
+# inflation rate = ((current cpi) - (previous cpi) / previous cpi) * 100
 annual_avgs <- data |>
   mutate(year = year(date)) |>
   group_by(year) |>
