@@ -1,0 +1,334 @@
+---
+title: "DATA 624 - HW 1"
+author: "Shoshana Farber"
+date: "Feb 4, 2024"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-packages, message=F, warning=F}
+library(fpp3)
+```
+
+### Exercise 2.1 
+
+Explore the following four time series: `Bricks` from `aus_production`, `Lynx` from `pelt`, `Close` from `gafa_stock`, `Demand` from `vic_elec`.
+
+```{r load-data}
+data(aus_production, pelt, gafa_stock, vic_elec)
+```
+
+- Use ? (or help()) to find out about the data in each series.
+
+```{r, eval=F}
+?aus_production
+?pelt
+?gafa_stock
+?vic_elec
+```
+
+- What is the time interval of each series?
+
+1. `aus_production`: quarterly
+2. `pelt`: annually
+3. `gafa_stock`: daily 
+4. `vic_elec`: half-hourly 
+
+- Use autoplot() to produce a time plot of each series.
+
+```{r time-plots-2.1}
+(p1 <- autoplot(aus_production, Bricks))
+(p2 <- autoplot(pelt, Lynx))
+(p3 <- autoplot(gafa_stock, Close))
+(p4 <- autoplot(vic_elec, Demand))
+```
+
+- For the last plot, modify the axis labels and title.
+
+```{r modify-plot}
+p4 +
+  labs(title = 'Electricity Demand Over Time for Victoria, Australia',
+       y = 'Total Demand (MWh)',
+       x = 'Time (Half-Hourly)')
+```
+
+### Exercise 2.2
+
+Use `filter()` to find what days corresponded to the peak closing price for each of the four stocks in `gafa_stock`.
+
+```{r filter}
+gafa_stock |>
+  group_by(Symbol) |>
+  filter(Close == max(Close)) |>
+  knitr::kable()
+```
+
+### Exercise 2.3
+
+Download the file `tute1.csv` from the book website, open it in Excel (or some other spreadsheet application), and review its contents. You should find four columns of information. Columns B through D each contain a quarterly series, labelled `Sales`, `AdBudget` and `GDP`. `Sales` contains the quarterly sales for a small company over the period 1981-2005. `AdBudget` is the advertising budget and `GDP` is the gross domestic product. All series have been adjusted for inflation.
+
+a. You can read the data into R with the following script:
+
+```{r, message=F}
+tute1 <- readr::read_csv("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_624/Homeworks/Data/tute1.csv")
+```
+
+b. Convert the data to time series
+
+```{r}
+mytimeseries <- tute1 |>
+  mutate(Quarter = yearquarter(Quarter)) |>
+  as_tsibble(index = Quarter)
+```
+
+c. Construct time series plots of each of the three series
+
+```{r}
+mytimeseries |>
+  pivot_longer(-Quarter) |>
+  ggplot(aes(x = Quarter, y = value, colour = name)) +
+  geom_line() +
+  facet_grid(name ~ ., scales = "free_y")
+```
+
+Check what happens when you don’t include `facet_grid()`.
+
+```{r}
+mytimeseries |>
+  pivot_longer(-Quarter) |>
+  ggplot(aes(x = Quarter, y = value, colour = name)) +
+  geom_line() 
+```
+
+When you do not use `facet grid()`, each variable is plotted together on the same grid with the same scale. Plotting these variables together does not add any value to our analysis, and we can more easily see the individual trends for each variable when they are plotted on their own. 
+
+### Exercise 2.4
+
+The `USgas` package contains data on the demand for natural gas in the US.
+
+a. Install the `USgas` package.
+
+```{r, warning=F}
+#install.packages('USgas')
+library(USgas)
+```
+
+b. Create a tsibble from `us_total` with `year` as the index and `state` as the key.
+
+```{r}
+(us_total_ts <- as_tsibble(us_total, index=year, key=state))
+```
+
+c. Plot the annual natural gas consumption by state for the New England area (comprising the states of Maine, Vermont, New Hampshire, Massachusetts, Connecticut and Rhode Island).
+
+```{r}
+new_england <- c('Maine', 'Vermont', 'New Hampshire', 'Massachusetts', 'Connecticut', 'Rhode Island')
+us_total_ts |>
+  filter(state %in% new_england) |>
+  autoplot() +
+  labs(title = "Natural Gas Consumption for New England States (1997-2019)",
+       x = 'Year',
+       y = 'Gas Consumption (Million Cubic Feet)') +
+  scale_y_continuous(label = scales::comma)
+```
+
+### Exercise 2.5
+
+a. Download `tourism.xlsx` from the book website and read it into R using `readxl::read_excel()`.
+
+```{r}
+tourism_data <- read.csv('https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_624/Homeworks/Data/tourism.csv')
+head(tourism_data)
+```
+
+b. Create a tsibble which is identical to the `tourism` tsibble from the `tsibble` package.
+
+```{r}
+data(tourism)
+head(tourism)
+
+keys = c('Region', 'State', 'Purpose')
+tourism_ts <- tourism_data |>
+  mutate(Quarter = yearquarter(Quarter)) |>
+  as_tsibble(index=Quarter, key=all_of(keys))
+
+identical(tourism, tourism_ts)
+```
+
+c. Find what combination of `Region` and `Purpose` had the maximum number of overnight trips on average.
+
+```{r}
+tourism_data |>
+  group_by(Region, Purpose) |>
+  summarize(avg_trips = mean(Trips)) |>
+  arrange(desc(avg_trips)) |>
+  head(1) |>
+  knitr::kable()
+```
+
+d. Create a new tsibble which combines the Purposes and Regions, and just has total trips by State.
+
+```{r}
+trips_by_state_ts <- tourism_data |>
+  group_by(Quarter, State) |>
+  summarize(total_trips = sum(Trips)) |>
+  mutate(Quarter = yearquarter(Quarter)) |>
+  as_tsibble(index=Quarter, key=State)
+
+head(trips_by_state_ts)
+```
+
+### Exercise 2.8 {.tabset .tabset-fade .tabset-pills}
+
+Use the following graphics functions: `autoplot()`, `gg_season()`, `gg_subseries()`, `gg_lag()`, `ACF()` and explore features from the following time series: “Total Private” `Employed` from `us_employment`, `Bricks` from `aus_production`, `Hare` from `pelt`, “H02” `Cost` from `PBS`, and `Barrels` from `us_gasoline`.
+
+- Can you spot any seasonality, cyclicity and trend?
+- What do you learn about the series?
+- What can you say about the seasonal patterns?
+- Can you identify any unusual years?
+
+#### Employed
+
+```{r} 
+us_employment |>
+  filter(Title == 'Total Private') |>
+  autoplot(Employed) +
+  labs(title = 'Autoplot')
+```
+
+```{r} 
+us_employment |>
+  filter(Title == 'Total Private') |>
+  gg_season(Employed) +
+  labs(title = 'Seasonal Decomposition')
+```
+
+```{r} 
+us_employment |>
+  filter(Title == 'Total Private') |>
+  gg_subseries(Employed) +
+  labs(title = 'Subseries Plot')
+```
+
+```{r} 
+us_employment |>
+  filter(Title == 'Total Private') |>
+  gg_lag(Employed) +
+  labs(title = 'Lag Plot')
+```
+
+```{r} 
+us_employment |>
+  filter(Title == 'Total Private') |>
+  ACF(Employed) |>
+  autoplot() +
+  labs(title = 'Autocorrelation')
+```
+
+From the plots, we can see that there is an apparent upward trend in employment and some seasonality. There appears to be a slight increase in the earlier months of the year, from January until about June, and then a leveling out of employment. There is a positive correlation across all lag plots.There are several dips in employment in the 70s, 80s, 90s, and early 2000s. 
+
+#### Bricks
+
+```{r} 
+aus_production |>
+  autoplot(Bricks) +
+  labs(title = 'Autoplot')
+```
+
+```{r} 
+aus_production |>
+  gg_season(Bricks) +
+  labs(title = 'Seasonal Decomposition')
+```
+
+```{r} 
+aus_production |>
+  gg_subseries(Bricks) +
+  labs(title = 'Subseries Plot')
+```
+
+```{r} 
+aus_production |>
+  gg_lag(Bricks, geom='point') +
+  labs(title = 'Lag Plot')
+```
+
+```{r} 
+aus_production |>
+  ACF(Bricks) |>
+  autoplot() +
+  labs(title = 'Autocorrelation')
+```
+
+The Australian brick production data appears quite cyclical. It starts out with a clear upward trend until about the early to mid 70s and from then on there are severe dips and then increases. Seasonally, brick production seems to increase from the first to the third quarter and then decrease. The largest dips in production are in the mid 70s and early 80s. 
+
+#### Hare
+
+```{r} 
+pelt |>
+  autoplot(Hare) +
+  labs(title = 'Autoplot')
+```
+
+```{r} 
+pelt |>
+  gg_lag(Hare, geom='point') +
+  labs(title = 'Lag Plot')
+```
+
+```{r} 
+pelt |>
+  ACF(Hare) |>
+  autoplot() +
+  labs(title = 'Autocorrelation')
+```
+
+The hare data is very cyclic. Plotting the autocorrelation shows about a 5 year cycle (5 years decreasing and then five years increasing). The largest increases were in the 1860s and 1880s. 
+
+#### Cost
+
+```{r} 
+PBS |>
+  filter(ATC2 == 'H02') |>
+  autoplot(Cost) +
+  labs(title = 'Autoplot')
+```
+
+```{r} 
+PBS |>
+  filter(ATC2 == 'H02') |>
+  gg_season(Cost) +
+  labs(title = 'Seasonal Decomposition')
+```
+
+Concessional co-payments seem to be at their highest in the middle of the year, from around March to August. Concessional safety net and general safety net both experience the opposite, where they are at their lowest in these months.  
+
+#### Barrels
+
+```{r} 
+us_gasoline |>
+  autoplot(Barrels) +
+  labs(title = 'Autoplot')
+```
+
+```{r} 
+us_gasoline |>
+  gg_season(Barrels) +
+  labs(title = 'Seasonal Decomposition')
+```
+
+```{r} 
+us_gasoline |>
+  gg_subseries(Barrels) +
+  labs(title = 'Subseries Plot')
+```
+
+There seems to be pretty much an upward trend. As far as seasonality goes, there does not seem to be such a clear trend, although there does seem to be some elevation in the weeks between June and September. 
