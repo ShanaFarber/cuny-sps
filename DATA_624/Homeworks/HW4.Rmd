@@ -1,0 +1,161 @@
+---
+title: "DATA 624 - Homework 4"
+author: "Shoshana Farber"
+date: "2024-02-23"
+output:
+  html_document: 
+    toc: True
+    toc_float: True
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(corrplot)
+library(caret)
+```
+
+### Exercise 3.1
+
+The UC Irvine Machine Learning Repository contains a data set related to glass identification. The data consist of 214 glass samples labeled as one of seven class categories. There are nine predictors, including the refractive index and percentages of eight elements: Na, Mg, Al, Si, K, Ca, Ba, and Fe.
+
+The data can be accessed via:
+
+```{r}
+library(mlbench)
+data(Glass)
+str(Glass)
+```
+
+**a. Using visualizations, explore the predictor variables to understand their distributions as well as the relationships between predictors.**
+
+First, we create a subset of just our predictor variables. 
+
+```{r}
+predictors <- Glass |>
+  select(-Type)
+
+head(predictors)
+```
+
+Now we can plot the distributions using histograms and boxplots. 
+
+```{r}
+# plot distributions
+# histogram
+par(mfrow=c(3,3))
+par(mai=c(.3,.3,.3,.3))
+for (predictor in names(predictors)) {
+  hist(predictors[[predictor]], main = predictor, col='lightblue')
+}
+
+# boxplot
+par(mfrow=c(3,3))
+par(mai=c(.25,.25,.25,.25))
+for (predictor in names(predictors)) {
+  boxplot(predictors[[predictor]], 
+          main = predictor, 
+          col='lightblue',
+          horizontal=T)
+}
+```
+
+Now we can visualize the relationships between the predictor variables using a correlation plot and scatter plots. 
+
+```{r}
+# relationships between predictors
+# correlation plot
+corrplot(cor(predictors), 
+         method="color",
+         diag=FALSE,
+         type="lower",
+         addCoef.col = "black",
+         number.cex=0.70)
+
+# pairplot
+pairs(predictors)
+```
+
+**b. Do there appear to be any outliers in the data? Are any predictors skewed?**
+
+`Na` appears to be mostly normally distributed with a slight right skew. `Al`, `RI`, and `Ca` also appear to have a right skews. `Fe`, `Ba`, and `K` are all severely right skewed. `Si` has a left skew and `Mg` is bimodal and also left skewed. 
+
+From the boxplots, we see a number of outliers for all but `Mg`.
+
+**c. Are there any relevant transformations of one or more predictors that might improve the classification model?**
+
+We could apply Box-Cox transformations to address the skewness of some of the variables. We could also use spacial sign transformations to minimize the outliers. 
+
+```{r}
+# Box-Cox transformation of Al
+par(mfrow=c(1,2))
+BoxCoxTrans(predictors$Al) 
+hist(predictors$Al, main='Original Distribution of Al')
+hist(predictors$Al**.5, main='Transformed (Lambda = 0.5)')
+
+# Spacial sign transformation of predictors
+boxplot(predictors, main='Original Distributions')
+boxplot(caret::spatialSign(scale(predictors)), main='Spacial Sign Transformed')
+```
+
+### Exercise 3.2
+
+The soybean data can also be found at the UC Irvine Machine Learning Repository. Data were collected to predict disease in 683 soybeans. The 35 predictors are mostly categorical and include information on the environmental conditions (e.g., temperature, precipitation) and plant conditions (e.g., left spots, mold growth). The outcome labels consist of 19 distinct classes.
+
+The data can be loaded via:
+
+```{r}
+library(mlbench)
+data(Soybean)
+```
+
+**a. Investigate the frequency distributions for the categorical predictors. Are any of the distributions degenerate in the ways discussed earlier in this chapter?**
+
+```{r fig.keep='hold', out.width='50%'}
+predictors <- Soybean |>
+  select(-Class)
+
+for (predictor in names(predictors)) {
+  print(
+  ggplot(data = predictors, aes(x = predictors[[predictor]])) +
+    geom_bar() +
+    labs(title = paste("Bar plot of", predictor), x=predictor)
+  )
+}
+```
+
+Many of the predictors are missing values. A few of the predictors are also very imbalanced, with almost all of the observations being accounted for in a single variable, such as `leaf.malf`, `leaf.mild`, `lodging`, `mycelium`, `int.discolor`, `sclerotia`, `mold.growth`, `seed.discolor`, `seed.size`, and `shriveling`. 
+
+**b. Roughly 18% of the data are missing. Are there particular predictors that are more likely to be missing? Is the pattern of missing data related to the classes?**
+
+We can calculate the percentage of data missing from each variable. 
+
+```{r}
+data.frame('percent_missing' = sort(round(colMeans((is.na(predictors)) * 100), 2), decreasing = T))
+```
+
+`hail`, `sever`, `seed.tmt`, and `lodging` have the highest likelihood of missing data, with over 17% of the data in these columns missing.
+
+```{r}
+missing_df <- Soybean |>
+  group_by(Class) |>
+  summarise_all(~sum(is.na(.)))
+
+missing_classes <- missing_df |>
+  select(-Class) |>
+  rowSums()
+
+missing_classes_df <- data.frame('Class' = missing_df$Class,
+                                 'missing' = missing_classes)
+
+missing_classes_df |>
+  ggplot(aes(x = missing, y = reorder(Class, missing))) +
+  geom_bar(stat='identity', fill='red') +
+  labs(title = 'Missing Values per Class', y = 'Class', x = 'Missing Values')
+```
+
+phytophthora-rot, 2-4-d-injury, cyst-nematode, diaporthe-pod-&-stem-blight, and herbicide-injury account for all the missing values in the dataset. 
+
+**c. Develop a strategy for handling missing data, either by eliminating predictors or imputation.**
+
+We could use KNN imputation to try and fill in the missing data. We could also eliminate variables with too many missing values. 
