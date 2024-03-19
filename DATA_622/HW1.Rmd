@@ -1,0 +1,406 @@
+---
+title: "DATA 622 - Homework 1"
+author: "Shoshana Farber"
+date: "Mar 10, 2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tidyr)
+library(corrplot)
+library(ResourceSelection)
+```
+
+## Exploratory Analysis
+
+### Data Loading
+
+Both datasets were found on Kaggle. The first dataset contains attributes relating to apple quality and can be accessed [here](https://www.kaggle.com/datasets/nelgiriyewithana/apple-quality). The second dataset records information and pricing for vehicles and can be accessed [here](https://www.kaggle.com/datasets/deepcontractor/car-price-prediction-challenge).
+
+```{r}
+apple_quality <- read.csv("C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_622/data/apple_quality.csv")
+
+car_price <- read.csv("C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_622/data/car_price_prediction.csv")
+
+car_price_test <- read.csv("C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_622/data/car_price.csv")
+```
+
+### Apple Quality
+
+The apple quality dataset contains about 4,000 rows and is 379 KB. The variables are as follows:
+
+|Variable|Description|
+|--|--|
+|`A_id`|Unique identifier for each fruit|
+|`Size`|Size of the fruit|
+|`Weight`|Weight of the fruit|
+|`Sweetness`|Degree of sweetness of the fruit|
+|`Crunchiness`|Texture indicating the crunchiness of the fruit|
+|`Juiciness`|Level of juiciness of the fruit|
+|`Ripeness`|Stage of ripeness of the fruit|
+|`Acidity`|Acidity level of the fruit|
+|`Quality`|Overall quality of the fruit|
+
+
+```{r}
+glimpse(apple_quality)
+```
+
+There are 4,001 rows and 9 columns. The first column is a unique identifier for each apple recorded and will not be relevant for modeling. All of the columns are numeric except for `Quality`, which is our target variable. 
+
+We can visualize the distributions of our variables. 
+
+```{r}
+apple_quality |>
+  select(-A_id) |>  # exclude apple ID
+  pivot_longer(cols=c(Size:Acidity),
+               names_to = 'Feature') |>
+  ggplot(aes(x = value)) +
+  geom_histogram(bins=30, fill='#6495ED') +
+  facet_wrap(~Feature) +
+  labs(title = "Distributions of Predictor Variables", x = "Value", y = "Count")
+```
+
+All of the features seem normally distributed. 
+
+```{r}
+apple_quality |>
+  ggplot(aes(x = Quality)) +
+  geom_bar(aes(fill = Quality)) +
+  labs(title = "Distribution of Apple Quality", y = "Count") +
+  geom_text(stat='count', aes(label=..count..), vjust=2, color="white", fontface='bold')
+```
+
+The breakdown of "good" and "bad" apples is about equal, with 1,996 apples qualifying as "bad" and 2,004 apples qualifying as "good". 
+
+We can also check the distribution of each predictive feature based on the response variable. 
+
+```{r}
+apple_quality |>
+  select(-A_id) |>  # exclude apple ID
+  pivot_longer(cols=c(Size:Acidity),
+               names_to = 'Feature') |>
+  ggplot(aes(x = value, y=Quality)) +
+  geom_boxplot(aes(fill=Quality)) +
+  facet_wrap(~Feature) +
+  labs(title = "Distributions of Predictor Variables by Quality", x = "Value", y = "Count")
+```
+
+"Good" apples are relatively juicier, bigger, sweeter, and less ripe. They also vary more in weight and crunchiness. 
+
+Let's check for correlations between predictor variables. 
+
+```{r}
+apple_quality |>
+  select(-A_id, -Quality) |>
+  cor() |>
+  corrplot(method="color",
+           diag=FALSE,
+           type="lower",
+           addCoef.col = "black",
+           number.cex=0.70)
+```
+
+Some of the features are slightly correlated with each other but none are significantly correlated. 
+
+This data is labelled, with each apple getting a `Quality` rating of "good" or "bad". For this data, I would use binary logistic regression to predict the quality of an apple. In order to do this, the `Quality` column needs to be binary encoded to 0s and 1s. For this example, we will use "good" = 1 and "bad" = 0. 
+
+
+```{r}
+apple_features <- apple_quality |>
+  select(-A_id) |>
+  mutate(Quality = ifelse(Quality == "good", 1, 0))
+```
+
+Let's check if any of our variables are missing values.
+
+```{r}
+colSums(is.na(apple_features))
+```
+
+There are no missing values. 
+
+The distributions are all pretty much normal so we could now create a binary logistic model from the data. 
+
+```{r}
+apple_mod <- glm(Quality~., data=apple_features, family="binomial")
+apple_mod
+```
+
+### Car Prices
+
+The car price dataset consists of about 19,000 rows and is 2,113 KB. The variables are as follows:
+
+|Variable|Description|
+|--|--|
+|`ID`|Unique ID for the vechile|
+|`Price`|Price of the vehicle|
+|`Levy`|Lien against the vehicle|
+|`Manufacturer`|Vehicle manufacturer|
+|`Model`|Vehicle model|
+|`ProdYear`|Year vehicle was produced|
+|`Category`|Type of vehicle (Sedan, Minivan, etc.)|
+|`LeatherInterior`|Whether the interior is leather (Yes, No)|
+|`FuelType`|Type of fuel (Petrol, Diesel, Hybrid, etc.)|
+|`EngineVolume`|Engine displacement in liters|
+|`Mileage`|Car mileage in kilometers|
+|`Cylinders`|Number of cylinders in engine|
+|`GearBoxType`|Gear box of the transmission (Manual, Automatic, etc.)|
+|`DriveWheels`|Type of drive (Front, 4x4, Rear, etc.)|
+|`Doors`|Number of doors|
+|`Wheel`|Steering wheel placement|
+|`Color`|Exterior color of vehicle|
+|`Airbags`|Number of airbags|
+
+```{r}
+glimpse(car_price)
+```
+
+There are 19,237 rows and 18 columns in the dataset. Some of the variables are incorrectly coded. 
+
+Let's fix these variables.
+
+Not all cars have a `Levy`. However, instead of null values, the missing levies are filled with a "-". Let's replace with a "0" for cars with no levy recorded. 
+
+```{r}
+# change levy to integer type
+car_price <- car_price |>
+  mutate(Levy = ifelse(Levy == '-',"0", Levy),
+         Levy = as.integer(Levy))
+```
+
+In general, a levy for a vehicle is not higher than the purchase price. Let's filter out any values where the `Levy` may be higher than the `Price`. 
+
+```{r}
+car_price <- car_price |>
+  filter(Levy < Price)
+```
+
+Some of the values in `EngineVolume` also note whether the engine is turbocharged with the word "Turbo" after the engine displacement value. We can extract the "Turbo" into a separate dummy column to note whether or not an engine is turbocharged. 
+
+```{r warning=F}
+# change engine volume to double
+car_price <- car_price |>
+  separate(EngineVolume, into=c("EngineVolume", "TurboEngine"), sep=" ") |>
+  mutate(TurboEngine = ifelse(!is.na(TurboEngine), "Yes", "No"),
+         EngineVolume = as.double(EngineVolume))
+```
+
+The car mileage has "km" in each. We know that this is mileage in kilometers. We do not need the "km" notation. 
+
+```{r}
+car_price <- car_price |>
+  mutate(Mileage = as.integer(str_remove(Mileage, " km")))
+```
+
+From the glimpse of the data, it seems wheel is noted as "Left wheel" or "Right-hand drive". Let's make sure this is true. 
+
+```{r}
+car_price |>
+  count(Wheel)
+```
+
+Since this is the placement of the wheel in the car, we can just use "Left" or "Right".
+
+```{r}
+car_price <- car_price |>
+  mutate(Wheel = ifelse(Wheel == "Left wheel", "Left", "Right"))
+```
+
+We can do something similar with `Doors`.
+
+```{r}
+car_price |>
+  count(Doors)
+```
+
+```{r}
+car_price <- car_price |>
+  mutate(Doors = str_remove(Doors, "-.*"))
+```
+
+The data was updated two years ago. Let's create an `Age` column by subtracting the `ProdYear` from 2022.
+
+```{r}
+car_price <- car_price |>
+  mutate("Age" = 2022 - ProdYear)
+```
+
+Let's check if there are any missing values. 
+
+```{r}
+colSums(is.na(car_price))
+```
+There are no missing values. 
+
+Now let's take a look at the distributions of some of our variables.
+
+```{r fig.keep='hold', out.width='50%'}
+cat_features <- c("Category", "LeatherInterior", "FuelType", "TurboEngine", "GearBoxType", "DriveWheels", "Doors", "Color") 
+
+for (feature in cat_features) {
+  print(
+  ggplot(data = car_price, aes(y = .data[[feature]])) +
+    geom_bar(fill='plum4') +
+    labs(title = paste("Barplot of", feature)))
+}
+
+```
+
+- Most of the entries are sedans, jeeps, and hatchbacks. 
+- More than half the cars have leather interiors. 
+- Most cars take petrol, diesel, or are hybrid. 
+- Most of the cars do not have a turbo engine. 
+- Most cars are automatic. 
+- Most cars have front driving wheels. 
+- Most cars have 4 doors.
+- Most cars are white, silver, grey, or black. 
+
+For the purposes of this analysis, let's only use cars that are either petrol, diesel, or hybrid, as those account for most of the vehicles. 
+
+```{r}
+car_price_filtered <- car_price |>
+  filter(FuelType %in% c("Diesel", "Petrol", "Hybrid"))
+```
+
+```{r fig.keep='hold', out.width='50%'}
+cont_features <- c("Price", "Mileage", "Levy", "EngineVolume", "Age")
+
+for (feature in cont_features) {
+  print(
+  ggplot(data = car_price_filtered, aes(x = .data[[feature]])) +
+    geom_histogram(bins=40, fill='lightblue') +
+    labs(title = paste("Histogram of", feature), x=feature)
+  )
+  print(
+  ggplot(data = car_price_filtered, aes(y = .data[[feature]])) +
+    geom_boxplot(fill='lightblue') +
+    labs(title = paste("Boxplot of", feature), x=feature)
+  )
+}
+```
+
+There are many outliers which do not allow us to see the distributions for `Price` and `Mileage` clearly. Let's see if we can transform the data to see these distributions more clearly. 
+
+```{r fig.keep='hold', out.width='50%', warning=F}
+for (feature in c("Price", "Mileage")) {
+  print(
+  ggplot(data = car_price_filtered, aes(x = log(.data[[feature]]))) +
+    geom_histogram(bins=40, fill='lightblue') +
+    labs(title = paste("Histogram of Transformed", feature), x=feature)
+  )
+  print(
+  ggplot(data = car_price_filtered, aes(y = log(.data[[feature]]))) +
+    geom_boxplot(fill='lightblue') +
+    labs(title = paste("Boxplot of Transformed", feature), x=feature)
+  )
+}
+```
+
+We can see that there are a lot of outliers but the distributions look a little more normal. 
+
+How much of the data is outliers?
+
+```{r}
+count_outliers <- function(x) {
+  iqr <- IQR(x)
+  lower <- quantile(x, .25) - 1.5*iqr
+  upper <- quantile(x, .75) + 1.5*iqr
+  outliers <- x[x < lower | x > upper]
+  return(length(outliers)) 
+}
+
+car_price_numeric <- car_price_filtered |>
+  select(-ID, -ProdYear) |>
+  select_if(is.numeric) 
+
+outlier_counts <- sapply(car_price_numeric, count_outliers)
+
+data.frame(
+  outlier_count = outlier_counts
+) |>
+  mutate(percent_outliers = (outlier_count/nrow(car_price_numeric))*100)
+```
+
+
+Almost 6% of the prices are outliers.
+
+Let's remove any prices that are considered "outliers". 
+
+```{r}
+outlier_indices <- function(x) {
+  q1 <- quantile(x, 0.25)
+  q3 <- quantile(x, 0.75)
+  iqr <- q3 - q1
+  lower_bound <- q1 - 1.5 * iqr
+  upper_bound <- q3 + 1.5 * iqr
+  outlier_indices <- which(x < lower_bound | x > upper_bound)
+  return(outlier_indices)
+}
+
+outliers_removed <- car_price_filtered[-(outlier_indices(car_price_filtered$Price)),] 
+
+nrow(outliers_removed)
+```
+
+We still have 14,929 rows. 
+
+How are the features correlated?
+
+```{r}
+outliers_removed |>
+  select(-ID, -ProdYear) |>
+  select_if(is.numeric) |>
+  cor() |>
+  corrplot(method='color',
+           diag=F,
+           type='lower',
+           addCoef.col = "black",
+           number.cex=0.7,
+           title='Outliers Removed',
+           mar=c(0,0,1,0))
+```
+
+There is a slight negative correlation between `Price` and `Levy` and `Price` and `EngineVolume`. There is a slight negative correlation between `Price` and `Age`. `Cylinder` and `EngineVolume` are highly correlated. `Age` and `Levy` are slightly correlated, as well as `Age` and `Airbags`. 
+
+Let's check the breakdown of `Price` over different categories. 
+
+```{r fig.keep='hold', out.width='50%'}
+vars <- c("FuelType", "TurboEngine", "GearBoxType", "DriveWheels", "Wheel", "Color")
+
+for (feature in vars) {
+  print(
+  ggplot(data = outliers_removed, aes(y = .data[[feature]], x=Price)) +
+    geom_boxplot(fill="plum") +
+    labs(title = paste("Barplot of", feature)))
+}
+```
+
+Diesel cars are priced higher the highest. Cars with Turbo engines are also more expensive. Cars with steering wheels on the left are more expensive but also have more varied prices.  
+
+Based on the distributions of the data and the fact that none of the variables have strong linear correlations, I would use either a Random Forest or kNN model to predict on this data. 
+
+```{r}
+library(randomForest)
+
+# split into training and testing
+set.seed(42)  
+
+outliers_removed_sub <- outliers_removed |>
+  select(-ID, -ProdYear)
+
+train_indices <- sample(1:nrow(outliers_removed_sub), 0.7 * nrow(outliers_removed_sub))  # 70% for training
+train_data <- outliers_removed_sub[train_indices, ]
+test_data <- outliers_removed_sub[-train_indices, ]
+
+# train model
+rf_model <- randomForest(Price ~ ., data = train_data)
+
+print(rf_model)
+```
+
+
+
