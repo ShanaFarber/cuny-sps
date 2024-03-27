@@ -12,21 +12,710 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
+library(lubridate)
+library(fpp3)
+library(cowplot)
+library(expss)
+library(openxlsx)
 ```
 
-### Part A - ATM Forecast
+## Part A - ATM Forecast
 
-Forecast how much cash is taken out of 4 different ATM machines for May 2010. The data is given in a single file. The variable `Cash` is provided in hundreds of dollars. I am being somewhat ambiguous on purpose to make this have a little more business feeling. Explain and demonstrate your process, techniques used and not used, and your actual forecast.  I am giving you data via an excel file, please provide your written report on your findings, visuals, discussion and your R code via an RPubs link along with the actual.rmd file  Also please submit the forecast which you will put in an Excel readable file.
+### Prompt
+
+Forecast how much cash is taken out of 4 different ATM machines for May 2010. The data is given in a single file. The variable `Cash` is provided in hundreds of dollars. Explain and demonstrate your process, techniques used and not used, and your actual forecast. Provide your written report on your findings, visuals, discussion and your R code via an RPubs link along with the actual .rmd file.
+
+### Exploration
+
+First, let's load and take a look at the data.  
 
 ```{r}
+atm_data <- read.csv("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_624/Projects/data/ATM624Data.csv", na.strings = c('', ' '))
 
+# glimpse preliminary information
+glimpse(atm_data)
+```
+
+`Date` is incorrectly coded as a character. This should be converted into a datetime. We will also cast `ATM` as a factor and turn the dataframe into a tsibble. 
+
+```{r}
+atm_data <- atm_data |>
+  mutate(DATE = mdy_hms(DATE),
+         DATE = as_date(DATE),
+         ATM = as.factor(ATM)) |>
+  as_tsibble(index=DATE, key=ATM)
+
+# check values
+summary(atm_data)
+```
+
+The `ATM` information is missing from 14 entries and the `Cash` information is missing from 19.
+
+Let's take a look at the entries with missing `ATM` values. 
+
+```{r}
+atm_data |>
+  filter(is.na(ATM)) |>
+  knitr::kable()
+```
+
+The missing `ATM` entries all correspond to missing `Cash` entries for the first half of May. This is the month we are attempting to forecast. We can filter out these entries. 
+
+```{r}
+atm_data <- atm_data |>
+  filter(!is.na(ATM))
+```
+
+Let's take a look at the remaining missing `Cash` entries.
+
+```{r}
+atm_data |>
+  filter(is.na(Cash)) |>
+  knitr::kable()
+```
+
+There are three missing values for ATM1 and two missing values for ATM2.  
+
+Let's take a look at the trends for these ATMs as they stand now.
+
+```{r}
+atm_data |>
+  autoplot(Cash) +
+  labs(title = "ATM Withdrawal for Four ATMs (May 2009 - April 2010)", x = "Date")
+```
+
+ATM4 seems to have almost consistently the highest total withdraw amount. There is also a large outlier for this ATM somewhere between February and March of 2010. Let's plot each ATM on their own scale so that we can see the trend for each.
+
+```{r}
+atm_data |>
+  autoplot(Cash) +
+  facet_wrap(~ATM, ncol=1, scales = "free_y") +
+  labs(title = "ATM Withdrawal for Four ATMs (May 2009 - April 2010)", x = "Date") 
+```
+
+ATM4 has a large outlier. For ATM3, it seems all the values are 0 until the end of April 2010. Possible explanations for this could be that this ATM was out of order for the period up until this point or perhaps the ATM only began operation at this point. Another possibility is that there could have been withdrawals from this ATM but, due to rounding from measuring in hundreds, the total amount recorded does not accurately reflect the actual withdrawals (eg. if the total withdrawal for a day was \$40, the amount in hundreds would round to 0). This explanation, however, is probably unlikely. Whatever the reason, the data for this ATM will not yield meaningful forecasts as the results will be heavily skewed by the $0 withdrawal amount. 
+
+Let's take a look at the distributions for the other three ATMs. 
+
+```{r warning=F}
+plot1 <- atm_data |>
+  filter(ATM != "ATM3") |>
+  ggplot(aes(x=Cash)) +
+  geom_histogram(aes(fill=ATM), bins=30) +
+  facet_wrap(~ATM, nrow=1, scales = "free_x") +
+  theme(legend.position="none") +
+  labs(title = "Histograms of ATM Cash Withdrawals", y = "Count", x = "Cash (Hundreds of $)")
+
+plot2 <- atm_data |>
+  filter(ATM != "ATM3") |>
+  ggplot(aes(x=Cash)) +
+  geom_boxplot(aes(fill=ATM)) +
+  facet_wrap(~ATM, nrow=1, scales = "free_x") +
+  theme(legend.position="none") +
+  labs(title = "Boxplots of ATM Cash Withdrawals", y = "", x = "Cash (Hundreds of $)")
+
+plot_grid(plot1, plot2, ncol=1)
 ```
  
-### Part B – Forecasting Power
+Here we can see the extreme outlier in ATM4 that we saw in the line plot. We can also see some outliers for ATM1. 
+
+ATM1 is missing 3 values for `Cash` (about 0.8% of the data). The data appears to be bimodally distributed with more observations present in the peak on the right. There also appears to be some outliers present towards the beginning and end of the distribution. As the data appears mostly normally distributed without these outliers, as can be seen from the boxplot, we will use median imputation for this ATM. 
+
+ATM2 is missing 2 values (about 0.5% of the data). ATM2 appears to be bimodally distributed with about equal observations in each peak. We will use mode imputation for this ATM. 
+
+We will use median imputation to replace the large outlier in ATM4. 
+
+```{r}
+# function for mode
+mode <- function(x) {
+   uniq_x <- unique(x)
+   uniq_x[which.max(tabulate(match(x, uniq_x)))]
+}
+
+atm_data_imputed <- atm_data |>
+  mutate(Cash = ifelse(Cash == max(atm_data$Cash, na.rm = T), NA, Cash)) |>
+  group_by(ATM) |>
+  mutate(Cash = case_when(
+    is.na(Cash) & ATM %in% c("ATM1", "ATM4") ~ median(Cash, na.rm=T),
+    is.na(Cash) & ATM == "ATM2" ~ mode(Cash),
+    TRUE ~ Cash
+  ))
+```
+
+Let's take a look at the data now that the values have been imputed.
+
+```{r warning=F, message=F}
+atm_data_imputed |>
+  autoplot(Cash) +
+  facet_wrap(~ATM, ncol=1, scales = "free_y") +
+  labs(title = "ATM Withdrawal for Four ATMs (May 2009 - April 2010)", x = "Date") 
+```
+
+```{r warning=F, message=F}
+atm_data_imputed |>
+  ACF(Cash) |>
+  autoplot() +
+  facet_wrap(~ATM, ncol=1, scales = "free_y") +
+  labs(title = "ACF Plots", x = "Date") 
+```
+
+From a preliminary look at the data, it is hard to tell whether the trends are stationary or not. ATM1 and ATM2 appear to have some seasonality apparent from the significant lags at weekly intervals (7, 14, 21) in the ACF plots. These ATMs might not be stationary. We can use a unit root test to determine whether the data is stationary or not. 
+
+```{r warning=F}
+atm_data_imputed |>
+  features(Cash, unitroot_kpss) |>
+  knitr::kable()
+```
+
+ATM1 and ATM2 are not stationary while ATM3 and ATM4 are. 
+
+We can see how many orders of differencing must be done to make the data stationary. 
+
+```{r}
+atm_data_imputed |>
+  features(Cash, unitroot_ndiffs)
+```
+
+ATM1 and ATM2 both require seasonal differencing to make the data stationary. 
+
+```{r}
+atm_data_imputed |>
+  features(difference(Cash,7), unitroot_ndiffs)
+```
+
+No first order differencing is needed. 
+
+```{r warning=F}
+atm_data_imputed |>
+  filter(ATM == "ATM1") |>
+  gg_tsdisplay(difference(Cash, lag=7), 
+               plot_type="partial") +
+  labs(title = "ATM1: Seasonally Differenced")
+```
+
+We can see the seasonal lags in the PACF plot. There is one outstanding seasonal lag in the ACF plot at lag 7, indicating a possible seasonal MA(1) model. The spike at lag 1 in the ACF plot could also indicate a non-seasonal MA(1). 
+
+```{r warning=F}
+atm_data_imputed |>
+  filter(ATM == "ATM2") |>
+  gg_tsdisplay(difference(Cash, lag=7), 
+               plot_type="partial") +
+  labs(title = "ATM2: Seasonally Differenced")
+```
+
+Once again, we can see the seasonal spikes in the PACF plot. There are significant spiked in the ACF plot at lag 7 indicating a seasonal MA(1) model. There may also be a significant spike at lag 21 which could indicate an MA(2) model. 
+
+```{r warning=F}
+atm_data_imputed |>
+  filter(ATM == "ATM4") |>
+  gg_tsdisplay(Cash, 
+               plot_type="partial") +
+  labs(title = "ATM4")
+```
+
+We can see the seasonal spikes decaying in the ACF plot. There is an outstanding seasonal spike at lag 7 in the PACF plot indicating a seasonal AR(1) model. 
+
+### Modeling
+
+We can use seasonal ARIMA modeling to forecast future withdrawals for each ATM. 
+
+Let's use the April 2010 data as a validation set and the rest of the data for training. 
+
+We will use an automatically generated ARIMA model and compare with our assumptions from the ACF and PACF plots. 
+
+```{r warning=F}
+atm1 <- atm_data_imputed |>
+  filter(ATM == "ATM1")
+
+atm1_mod <- atm1 |>
+  model(auto = ARIMA(Cash),
+        arima001011 = ARIMA(Cash ~ 0 + pdq(0,0,1) + PDQ(0,1,1, period=7)))
+
+atm1_mod |>
+  knitr::kable()
+
+report(atm1_mod) |>
+  select(.model:BIC) |>
+  knitr::kable()
+```
+
+```{r warning=F}
+atm2 <- atm_data_imputed |>
+  filter(ATM == "ATM2")
+
+atm2_mod <- atm2 |>
+  model(auto = ARIMA(Cash),
+        arima000011 = ARIMA(Cash ~ 0 + pdq(0,0,0) + PDQ(0,1,1, period=7)),
+        arima000012 = ARIMA(Cash ~ 0 + pdq(0,0,0) + PDQ(0,1,2, period=7)))
+
+atm2_mod |>
+  knitr::kable()
+
+report(atm2_mod) |>
+  select(.model:BIC) |>
+  knitr::kable()
+```
+
+```{r warning=F}
+atm4 <- atm_data_imputed |>
+  filter(ATM == "ATM4")
+
+atm4_mod <- atm4 |>
+  model(auto = ARIMA(Cash),
+        arima000100 = ARIMA(Cash ~ 0 + pdq(0,0,0) + PDQ(1,0,0, period=7)))
+
+atm4_mod |>
+  knitr::kable()
+
+report(atm4_mod) |>
+  select(.model:BIC) |>
+  knitr::kable()
+```
+
+In each case, the automatically generated ARIMA model for the ATM has a lower AIC than the manually created ones. For ATM1, the AIC for the manually created ARIMA model is only slightly larger than the AIC of the automatically generated model and the BIC is lower. 
+
+Let's forecast using the automatically generated models. 
+
+```{r message=F}
+atm_train <- atm_data_imputed |>
+  filter(DATE < "2010-04-01")
+
+atms_mod <- atm_train |>
+  filter(ATM != "ATM3") |>
+  model(ARIMA(Cash))
+
+fc <- atms_mod |>
+  forecast(h=61)
+```
+
+There is not enough information from ATM3 to accurately forecast future withdrawals, as there are only 3 recorded days. For this, we will use the NAIVE method to forecast.
+
+```{r message=F}
+atm3 <- atm_data_imputed |>
+  filter(ATM == "ATM3")
+
+atm3_mod <- atm3 |>
+  model(NAIVE(Cash))
+
+atm3_fc <- atm3_mod |>
+  forecast(h=31)
+
+fc <- fc |>
+  bind_rows(atm3_fc)
+
+fc |>
+  autoplot(atm_data_imputed)
+```
+
+The models for ATM1 and ATM2 seem to somewhat accurately forecast future withdrawals. The model for ATM4 combines the ARIMA model with a mean and does not as accurately forecast. 
+
+```{r}
+atms_mod |>
+  filter(ATM == "ATM1") |>
+  gg_tsresiduals() +
+  labs(title = "ATM1")
+
+atms_mod |>
+  filter(ATM == "ATM2") |>
+  gg_tsresiduals() +
+  labs(title = "ATM2")
+
+atms_mod |>
+  filter(ATM == "ATM4") |>
+  gg_tsresiduals() +
+  labs(title = "ATM4")
+```
+
+The residuals of the models for ATM1 and ATM2 closely resemble the white noise series. 
+
+```{r}
+may_forecasts <- fc |>
+  filter(DATE >= "2010-05-01")
+
+wb = createWorkbook()
+sh = addWorksheet(wb, "ATM Forecasts")
+
+xl_write(may_forecasts, wb, sh)
+
+saveWorkbook(wb, "C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_624/Projects/output/project1_forecasts.xlsx", overwrite = TRUE)
+```
+
+## Part B – Forecasting Power
+
+### Prompt
  
-Part B consists of a simple dataset of residential power usage for January 1998 until December 2013.  Your assignment is to model these data and a monthly forecast for 2014.  The data is given in a single file.  The variable ‘KWH’ is power consumption in Kilowatt hours, the rest is straight forward.    Add this to your existing files above. 
+Part B consists of a simple dataset of residential power usage for January 1998 until December 2013.  Your assignment is to model these data and a monthly forecast for 2014.  The data is given in a single file. The variable ‘KWH’ is power consumption in Kilowatt hours, the rest is straight forward. Add this to your existing files above. 
+
+### Exploration
+
+Let's load the data. 
  
+```{r}
+power_data <- read.csv('https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_624/Projects/data/ResidentialCustomerForecastLoad-624.csv')
+
+# glimpse preliminary information
+glimpse(power_data)
+```
+
+The data consists of 3 columns. 
+
+`CaseSequence` is an ID column and is unecessary for the purposes of this analysis. It can be removed. 
+
+The date column (`YYYY.MMM`) is coded as a character. In order to perform a time series analysis on this data, we will need to format this as a date. 
+
+We will also turn this table into a tsibble. 
+
+```{r}
+power_data_ts <- power_data |>
+  rename(Date = YYYY.MMM) |>
+  mutate(Date = yearmonth(Date)) |>
+  select(-CaseSequence) |>
+  as_tsibble(index=Date)
+```
+
+Let's check if there are any missing values. 
+
+```{r}
+colSums(is.na(power_data_ts))
+```
+
+There is one missing value for `KWH`. Let's see which date is missing this recorded value.
+
+```{r}
+power_data_ts |>
+  filter(is.na(KWH)) |>
+  knitr::kable()
+```
+
+September 2008 is missing the recorded `KWH`. 
+
+Let's take a look at the distribution of `KWH` and the trend of the data to address this value.  
+
+```{r warning=F}
+plot1 <- power_data_ts |>
+  autoplot(KWH) +
+  labs(title = "Lineplot of Power Usage", x = "Date") +
+  scale_y_continuous(labels=scales::comma)
+
+plot2 <- power_data_ts |>
+  ggplot(aes(x = KWH)) +
+  geom_histogram(bins=15, fill='lightblue') +
+  scale_x_continuous(labels=scales::comma) +
+  labs(title = "Histogram of KWH")
+
+plot3 <- power_data_ts |>
+  ggplot(aes(x = KWH)) +
+  geom_boxplot(fill='lightblue') +
+  scale_x_continuous(labels=scales::comma) +
+  labs(title = "Boxplot of KWH")
+
+plot_grid(plot1, plot_grid(plot2, plot3, nrow=1), ncol=1)
+```
+
+The line plot shows seasonality in the data. It also shows a major outlier of sometime in 2010. We can also see this outlier present in the histogram and boxplot.
+
+We will need to deal with the missing point as well as this outlier. 
+
+What is the outlier?
+
+```{r}
+power_data_ts |>
+  filter(KWH < 3000000)
+```
+
+July 2010 is the outlier with only 770,052 KWH used in that month. Every other month used in the millions. This could have been a typo and maybe there is a missing number. 
+
+```{r}
+# remove outlier
+outlier_ind <- which(power_data_ts$Date == yearmonth("2010 Jul"))
+power_data_ts$KWH[outlier_ind] = NA
+```
+
+Let's take a look at the lags for this variable to see how we should impute the missing values. 
+
+```{r warning=F}
+power_data_ts |>
+  gg_lag(KWH, geom="point", lags = 1:12)
+```
+
+Based on the lags, the data is most similar at yearly intervals. 
+
+```{r warning=F}
+power_data_ts |>
+  gg_season(KWH) +
+  scale_y_continuous(labels=scales::comma) +
+  labs(title = "Seasonal Decomposition of KWH", x = "Month")
+```
+
+The data follows a clear seasonal trend. There is more power usage in the beginning, middle, and end of the year. 
+
+To impute the missing values, I will use an average of the power usage at the same month for two years prior. 
+
+```{r}
+impute_jul <- power_data |>
+  filter(YYYY.MMM %in% c("2008-Jul", "2009-Jul"))
+
+impute_sep <- power_data |>
+  filter(YYYY.MMM %in% c("2006-Sep", "2007-Sep")) 
+
+# impute
+power_data_ts <- power_data_ts |>
+  mutate(KWH = ifelse(Date == yearmonth("2010 Jul"), mean(impute_jul$KWH), KWH),
+         KWH = ifelse(Date == yearmonth("2008 Sep"), mean(impute_sep$KWH), KWH))
+```
+
+```{r}
+power_data_ts |>
+  autoplot(KWH) +
+  labs(title = "Lineplot of Power Usage", x = "Date") +
+  scale_y_continuous(labels=scales::comma)
+```
+
+### Modeling
+
+Due to the clear seasonality in the data, we will need to use seasonal differencing to make this data stationary.
+
+```{r warning=F}
+power_data_ts |>
+  gg_tsdisplay(difference(KWH, lag=12), 
+               plot_type="partial") +
+  labs(title = "Power Usage: Seasonally Differenced")
+```
+
+Let's see if a further first order difference is required. The data is considered stationary after the seasonal differencing. 
+
+```{r}
+power_data_ts |>
+  features(difference(KWH, lag=12), unitroot_kpss) |>
+  knitr::kable()
+```
+
+No further differencing is required. 
+
+The ACF and PACF plots are quite similar for the seasonally differenced data. We can see an outstanding lag at lag 12 in both. We can use either a seasonal AR(1) model or a seasonal MA(1) model. There is a possible nonseasonal outstanding lag seen at lag 3 in both plots, so we can also try using a nonseasonal MA(1) model. 
+
+There is possibly a slight upward trend in the data, so we will also test a model with drift. 
+
+We will use 2012 and 2013 as validation sets. 
+
+```{r warning=F}
+power_mods <- power_data_ts |>
+  filter(year(Date) < 2012) |>
+  model(auto = ARIMA(KWH),
+        arima000011 = ARIMA(KWH ~ 0 + pdq(0,0,0) + PDQ(0,1,1, period=12)),
+        arima000110 = ARIMA(KWH ~ 0 + pdq(0,0,0) + PDQ(1,1,0, period=12)),
+        arima001011 = ARIMA(KWH ~ 0 + pdq(0,0,1) + PDQ(0,1,1, period=12)),
+        arima001110 = ARIMA(KWH ~ 0 + pdq(0,0,1) + PDQ(1,1,0, period=12)),
+        arima001011drift = ARIMA(KWH ~ 1 + pdq(0,0,1) + PDQ(0,1,1, period=12)),
+        arima001110drift = ARIMA(KWH ~ 1 + pdq(0,0,1) + PDQ(1,1,0, period=12)))
+
+power_mods |>
+  knitr::kable()
+
+report(power_mods) |>
+  select(.model:BIC) |>
+  knitr::kable()
+```
+
+The ARIMA(0,0,1)(0,1,1)[12] model with drift has the lowest AIC and BIC. 
+
+```{r}
+power_mods |>
+  forecast(h="3 years") |>
+  autoplot(power_data_ts |> filter(year(Date) > 2010), level= NULL) +
+  labs(title = "KWH Forecast Models") +
+  scale_y_continuous(labels=scales::comma)
+```
+
+Each model closely follows the data, although the ARIMA(0,0,1)(1,1,0)[12] model and ARIMA(0,0,1)(1,1,0)[12] with drift both seem to overestimate in mid-2013.
+
+Let's compare the residuals of the automatically generated model with the ARIMA(0,0,1)(0,1,1)[12] model with drift. 
+
+```{r}
+power_mods |>
+  select(auto) |>
+  gg_tsresiduals() +
+  labs(title = "Auto ARIMA")
+  
+power_mods |>
+  select(arima001011drift) |>
+  gg_tsresiduals() +
+  labs(title = "ARIMA(0,0,1)(0,1,1)[12] with drift")
+```
+
+The ARIMA(0,0,1)(0,1,1)[12] model with drift resembles white noise slightly better than than automatically generated model. There is one lag that seems autocorrelated but it is much smaller than the autocorrelated lag in the automatically generated model. The distribution of the residuals looks normal and there is no heteroskedasticity in the variation. 
+
+We will forecast for 2014 using the ARIMA(0,0,1)(0,1,1)[12] model with drift.
+
+```{r}
+fc_2014 <- power_mods |>
+  select(arima001011drift) |>
+  forecast(h="3 years") |>
+  filter(year(Date)  == 2014)
+  
+sh = addWorksheet(wb, "Power Forecasts")
+
+xl_write(fc_2014, wb, sh, append=T)
+
+saveWorkbook(wb, "C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_624/Projects/output/project1_forecasts.xlsx", overwrite = TRUE)
+```
+
+## Part C – BONUS
  
-### Part C – BONUS
- 
-Part C consists of two data sets.  These are simple 2 columns sets, however they have different time stamps.  Your optional assignment is to time-base sequence the data and aggregate based on hour (example of what this looks like, follows).  Note for multiple recordings within an hour, take the mean.  Then to determine if the data is stationary and can it be forecast.  If so, provide a week forward forecast and present results via Rpubs and .rmd and the forecast in an Excel readable file.   
+#### Prompt 
+
+Part C consists of two data sets. These are simple 2 columns sets, however they have different time stamps. Your optional assignment is to time-base sequence the data and aggregate based on hour (example of what this looks like, follows). Note for multiple recordings within an hour, take the mean. Then to determine if the data is stationary and can it be forecast. If so, provide a week forward forecast and present results via Rpubs and .rmd and the forecast in an Excel readable file.   
+
+#### Load Data
+
+```{r}
+waterpipe1_data <- read.csv('https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_624/Projects/data/Waterflow_Pipe1.csv')
+
+waterpipe2_data <- read.csv('https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_624/Projects/data/Waterflow_Pipe2.csv')
+
+glimpse(waterpipe1_data)
+glimpse(waterpipe2_data)
+```
+
+#### Aggregate Data
+
+First, we need to transform the `Date.Time` columns to actual date types. 
+
+```{r}
+waterpipe1_data <- waterpipe1_data |>
+  mutate(Date.Time = as.POSIXct(Date.Time, format = "%m/%d/%y %I:%M %p"))
+
+waterpipe2_data <- waterpipe2_data |>
+  mutate(Date.Time = as.POSIXct(Date.Time, format = "%m/%d/%y %I:%M %p"))
+```
+
+We can now round down to the hour and take an average for each hour.
+
+```{r}
+hourly_pipe1 <- waterpipe1_data |>
+  mutate(Date.Time = floor_date(Date.Time, "hour")) |>
+  group_by(Date.Time) |>
+  summarize(avg_flow = mean(WaterFlow, na.rm=T)) |>
+  as_tsibble(index=Date.Time)
+
+hourly_pipe2 <- waterpipe2_data |>
+  mutate(Date.Time = floor_date(Date.Time, "hour")) |>
+  group_by(Date.Time) |>
+  summarize(avg_flow = mean(WaterFlow, na.rm=T)) |>
+  as_tsibble(index=Date.Time)
+```
+
+Let's look for any trends in the data. 
+
+There are some missing gaps in the data. We will use `fill_gaps()` to create NA entries for any missing hours and then we will fill any NA values using the last observation. 
+
+```{r}
+plot1 <- hourly_pipe1 |>
+  fill_gaps() |>
+  fill(avg_flow, .direction="down") |>
+  autoplot(avg_flow) +
+  labs(title = "Pipe 1: Hourly Water Flow", x = "Date", y = "Average Water Flow")
+
+plot2 <- hourly_pipe1 |>
+  fill_gaps() |>
+  fill(avg_flow, .direction="down") |>
+  ACF(avg_flow) |>
+  autoplot() +
+  labs(title = "ACF")
+
+plot_grid(plot1, plot2, ncol=1)
+```
+
+Pipe1 seems to be stationary. There are no outstanding lags in the ACF plot and no clear seasonal patterns. 
+
+```{r}
+plot1 <- hourly_pipe2 |>
+  fill_gaps() |>
+  fill(avg_flow, .direction="down") |>
+  autoplot(avg_flow) +
+  labs(title = "Pipe 2: Hourly Water Flow", x = "Date", y = "Average Water Flow")
+
+plot2 <- hourly_pipe2 |>
+  fill_gaps() |>
+  fill(avg_flow, .direction="down") |>
+  ACF(avg_flow) |>
+  autoplot() +
+  labs(title = "ACF")
+
+plot_grid(plot1, plot2, ncol=1)
+```
+
+Pipe2 also looks to be stationary. There are 3 outstanding lags in the ACF plot. 
+
+Let's confirm these are stationary using a unit test. 
+
+```{r}
+hourly_pipe1 |>
+  features(avg_flow, unitroot_kpss) |>
+  knitr::kable()
+
+hourly_pipe1 |>
+  features(avg_flow, unitroot_kpss) |>
+  knitr::kable()
+```
+
+Both pipe1 and pipe2 are clearly stationary. 
+
+#### Forecasting
+
+We will use automatically generated ARIMA models to forecast.
+
+```{r}
+pipe1_mod <- hourly_pipe1 |>
+  fill_gaps() |>
+  fill(avg_flow, .direction="down") |>
+  model(ARIMA(avg_flow))
+
+report(pipe1_mod)
+```
+
+```{r}
+pipe2_mod <- hourly_pipe2 |>
+  fill_gaps() |>
+  fill(avg_flow, .direction="down") |>
+  model(ARIMA(avg_flow))
+
+report(pipe2_mod)
+```
+For pipe1, the model generated is equivalent to a MEAN model. For pipe2, there is a seasonal MA(1) component but the model also uses the mean. 
+
+Let's forecast for the next week using these models. 
+
+```{r}
+pipe1_fc <- pipe1_mod |>
+  forecast(h="1 week")
+
+pipe1_fc |>
+  autoplot(hourly_pipe1) +
+  labs(title = "Pipe 1 Week Forecast", y = "Average Water Flow", x = "Date")
+```
+
+```{r}
+pipe2_fc <- pipe2_mod |>
+  forecast(h="1 week")
+
+pipe2_fc |>
+  autoplot(hourly_pipe2) +
+  labs(title = "Pipe 2 Week Forecast", y = "Average Water Flow", x = "Date")
+```
+
+Pipe1 uses just the mean to forecast. Pipe2 starts off with some seasonality and then becomes steady as it uses the mean. 
+
+```{r}
+sh = addWorksheet(wb, "Pipe1 Forecasts")
+
+xl_write(pipe1_fc, wb, sh, append=T)
+
+saveWorkbook(wb, "C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_624/Projects/output/project1_forecasts.xlsx", overwrite = TRUE)
+
+sh = addWorksheet(wb, "Pipe2 Forecasts")
+
+xl_write(pipe2_fc, wb, sh, append=T)
+
+saveWorkbook(wb, "C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_624/Projects/output/project1_forecasts.xlsx", overwrite = TRUE)
+```
