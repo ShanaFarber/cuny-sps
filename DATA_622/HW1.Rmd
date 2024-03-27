@@ -21,11 +21,9 @@ library(ResourceSelection)
 Both datasets were found on Kaggle. The first dataset contains attributes relating to apple quality and can be accessed [here](https://www.kaggle.com/datasets/nelgiriyewithana/apple-quality). The second dataset records information and pricing for vehicles and can be accessed [here](https://www.kaggle.com/datasets/deepcontractor/car-price-prediction-challenge).
 
 ```{r}
-apple_quality <- read.csv("C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_622/data/apple_quality.csv")
+apple_quality <- read.csv("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_622/data/apple_quality.csv")
 
-car_price <- read.csv("C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_622/data/car_price_prediction.csv")
-
-car_price_test <- read.csv("C:/Users/Shoshana/Documents/CUNY SPS/cuny-sps/DATA_622/data/car_price.csv")
+car_price <- read.csv("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_622/data/car_price_prediction.csv")
 ```
 
 ### Apple Quality
