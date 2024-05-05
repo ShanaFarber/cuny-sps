@@ -1,0 +1,445 @@
+---
+title: "DATA 622 - Homework 2"
+author: "Shoshana Farber"
+date: "Mar 31, 2024"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(snakecase)
+library(cowplot)
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(randomForest)
+library(RColorBrewer)
+library(corrplot)
+```
+
+### Data
+
+The dataset was taken from Kaggle and can be found [here](https://www.kaggle.com/datasets/teejmahal20/airline-passenger-satisfaction). It contains the results of an airline passenger satisfaction survey.
+
+The dataset consists of 129,880 rows and 24 columns. The predictor variables include passenger details, such as gender, whether they are a loyal customer, age, type of travel, and which class they were sitting in, as well as information regarding the flight such as the flight distance, departure delays, and arrival delays. There are also several columns which are rated on a scale of 1-5 by the passenger, such as the quality of the food and drink, baggage handling, check in service, in flight service, seat comfort, cleanliness, etc.
+
+The response variable for this dataset is `satisfaction` which can be either "satisfied" or "neutral or dissatisfied."
+
+```{r}
+airline_satisfaction <- read.csv("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_622/data/airline_satisfaction.csv")
+```
+
+### Data Exploration
+
+We can take a look at our data using the `glimpse()` function.
+
+```{r}
+# change column names to snake case
+names(airline_satisfaction) <- to_snake_case(names(airline_satisfaction))
+
+glimpse(airline_satisfaction)
+```
+
+The first column, `id` is a unique integer assigned to each passenger that took part in the survey. This information will not be used for modeling purposes.
+
+Some of the columns are character datatypes but most are numeric.
+
+The character columns are: `gender`, `customer_type`, `type_of_travel`, `class`, and `satisfaction` (response variable).
+
+There are two types of numeric columns in the dataset. `age`, `flight_distance`, `departure_delay_in_minutes`, and `arrival_delay_in_minutes` are all continuous. The rest of the numeric columns are ordinal and consist of a 1-5 rating, with 5 being the highest (most positive) rating and 1 being the lowest (most negative) rating.
+
+Let's check to see if any of the columns are missing values which will need to be imputed.
+
+```{r}
+# remove id column
+airline_satisfaction <- airline_satisfaction |>
+  dplyr::select(-id)
+
+# check missing variables
+missing <- colSums(is.na(airline_satisfaction))
+
+data.frame(
+  Variable = names(missing),
+  Missing = missing,
+  row.names = NULL) |>
+  knitr::kable()
+```
+
+The only column with any missing values is `arrival_delay_in_minutes`.
+
+Let's check the distribution of this variable so that we can choose an appropriate imputation method.
+
+First, let's see how many values are missing for each `satisfaction` type.
+
+```{r}
+airline_satisfaction |>
+  filter(is.na(arrival_delay_in_minutes)) |>
+  group_by(satisfaction) |>
+  summarize(missing = n()) |>
+  knitr::kable()
+```
+
+Now, let's check the distribution of the values for `arrival_delay_in_minutes`.
+
+```{r warning=F}
+airline_satisfaction |>
+  ggplot(aes(x = arrival_delay_in_minutes)) +
+  geom_histogram(aes(fill = satisfaction), bins=50) +
+  labs(title = "Distribution of Arrival Delays")
+```
+
+Based on the plot, it seems that most of the flights in the survey had very little to no arrival delay. This is true for both satisfied and dissatisfied passengers. We will impute the missing values using zero, which also happens to be the median.
+
+```{r}
+airline_satisfaction_imp <- airline_satisfaction |>
+  mutate(arrival_delay_in_minutes = ifelse(is.na(arrival_delay_in_minutes), 0, arrival_delay_in_minutes))
+```
+
+According to the data description included on the Kaggle, a "0" rating indicates a response that was not answered (not applicable).
+
+Let's re-code the 0 instances to null values for each rating column.
+
+```{r}
+columns_to_recode <- c("inflight_wifi_service", "departure_arrival_time_convenient", "ease_of_online_booking", "gate_location", "food_and_drink", "online_boarding", "seat_comfort", "inflight_entertainment", "on_board_service", "leg_room_service", "baggage_handling", "checkin_service", "inflight_service", "cleanliness")  
+
+airline_satisfaction_imp <- airline_satisfaction_imp |>
+  mutate_at(vars({{ columns_to_recode }}), ~if_else(. == 0, NA, .)) |>
+  ungroup()
+```
+
+Let's check to see how many rows have NA values in them.
+
+```{r}
+sum(rowSums(is.na(airline_satisfaction_imp)) > 0)
+```
+
+A little more than 10,000 rows are missing ratings. Since the dataset is quite large, with the removal of these columns we will still have over 110,000 rows. Instead of imputing these values and possibly introducing bias into the model, we will drop the rows that have missing ratings.
+
+```{r}
+airline_satisfaction_imp <- airline_satisfaction_imp |>
+  drop_na()
+
+nrow(airline_satisfaction_imp)
+```
+
+We still have almost 120,000 rows after deleting these rows.
+
+Now, let's check how balanced the data is (i.e. the distribution of the response variable).
+
+```{r wrning=F}
+# calculate counts and percents
+counts <- airline_satisfaction %>%
+  count(satisfaction) |>
+  mutate(total = nrow(airline_satisfaction),
+         perc = round(n / total * 100, 2))
+
+# plot
+counts %>%
+  ggplot(aes(x = satisfaction, y = n)) +
+  geom_bar(aes(fill = satisfaction), stat="identity") +
+  geom_text(aes(label = paste0(perc, '%')), vjust = 2, color = "white", fontface = 'bold') +
+  theme(legend.position = "none") +
+  labs(title = "Distribution of Response Variable", x = "Satisfaction", y = "Count")
+```
+
+The dataset is slightly imbalanced, with about 13% more instances of dissatisfied customers. Because the dataset is large, with over 100,000 rows, this imbalance does not seem to be concerning.
+
+Let's take a look at the distributions of the categorical variables within the dataset.
+
+```{r}
+plot1 <- airline_satisfaction_imp |>
+  ggplot(aes(x = gender)) +
+  geom_bar(aes(fill = gender)) +
+  theme(legend.position = "none") +
+  labs(y = "Count", x = "Gender")
+
+plot2 <- airline_satisfaction_imp |>
+  ggplot(aes(x = customer_type)) +
+  geom_bar(aes(fill = customer_type)) +
+  theme(legend.position = "none") +
+  labs(y = "Count", x = "Customer Type")
+
+plot3 <- airline_satisfaction_imp |>
+  ggplot(aes(x = type_of_travel)) +
+  geom_bar(aes(fill = type_of_travel)) +
+  theme(legend.position = "none") +
+  labs(y = "Count", x = "Type of Travel")
+
+plot4 <- airline_satisfaction_imp |>
+  ggplot(aes(x = class)) +
+  geom_bar(aes(fill = class)) +
+  theme(legend.position = "none") +
+  labs(y = "Count", x = "Class")
+
+plot_grid(plot1, plot2, plot3, plot4, nrow=2)
+```
+
+There are about as many males and females who took the survey. Most of the passengers who took the survey are loyal customers. More than half of the passengers were traveling for business. Most of the passengers flew either business or economy class.
+
+Let's see how satisfaction differs amongst these categories.
+
+```{r}
+plot1 <- airline_satisfaction_imp |>
+  ggplot(aes(x = gender)) +
+  geom_bar(aes(fill = satisfaction), position="dodge") +
+  theme(legend.position = "none") +
+  labs(y = "Count", x = "Gender")
+
+plot2 <- airline_satisfaction_imp |>
+  ggplot(aes(x = customer_type)) +
+  geom_bar(aes(fill = satisfaction), position="dodge") +
+  theme(legend.position = "none") +
+  labs(y = "Count", x = "Customer Type")
+
+plot3 <- airline_satisfaction_imp |>
+  ggplot(aes(x = type_of_travel)) +
+  geom_bar(aes(fill = satisfaction), position="dodge") +
+  theme(legend.position = "none") +
+  labs(y = "Count", x = "Type of Travel")
+
+plot4 <- airline_satisfaction_imp |>
+  ggplot(aes(x = class)) +
+  geom_bar(aes(fill = satisfaction), position="dodge") +
+  theme(legend.position = "none") +
+  labs(y = "Count", x = "Class")
+
+grid <- plot_grid(plot1, plot2, plot3, plot4, nrow=2)
+
+palette_legend <- ggplot(airline_satisfaction_imp, aes(x = 0, y = 0, color = factor(satisfaction))) +
+  geom_point(shape = 16, size = 4) +
+  scale_color_discrete(name = "Satisfaction") +  
+  theme_void()
+
+plot_grid(grid, palette_legend, nrow = 1, rel_widths = c(4, 1.1))
+```
+
+There is about equal distribution for males and females. For disloyal customers, more than half were either neutral or dissatisfied with their experience. Most people who were flying for business were satisfied while most people flying for personal travel were neautral or dissatisfied. More than half of the business class flyers were satisfied while about 75% of people who flew economy were neutral or dissatisfied.
+
+Let's take a look to see which ratings are most correlated with passenger satisfaction.
+
+```{r}
+airline_satisfaction_imp |>
+  mutate(satisfied = ifelse(satisfaction == "satisfied", 1, 0)) |>
+  dplyr::select(satisfied, all_of(columns_to_recode)) |>
+  rename(convenient_time = departure_arrival_time_convenient) |>
+  cor() |>
+  corrplot(method="color", 
+           diag=FALSE,
+           type="lower",
+           addCoef.col = "black",
+           number.cex=0.4)
+```
+
+If we look down the first column, `online_boarding` is the most highly correlated with `satisfaction`. There are also a few predictors that seem to be highly correlated with each other, such as `cleanliness` with `food_and_drink`, `seat_comfort`, and `inflight_entertainment`.
+
+### Data Preparation
+
+Decision trees do not tend to care about the distributions of numeric predictor variables, so we do not need to transform any of our variables.
+
+First, we will code our response variable as a factor.
+
+```{r}
+airline_satisfaction_imp$satisfaction <- factor(airline_satisfaction_imp$satisfaction, levels = c("satisfied", "neutral or dissatisfied"))
+```
+
+Let's split the data into a training and testing set. We will use an 80% training set and 20% testing set.
+
+```{r}
+set.seed(613)
+
+sample <- sample(nrow(airline_satisfaction_imp), round(nrow(airline_satisfaction_imp) * 0.8), replace = FALSE)
+
+train <- airline_satisfaction_imp[sample, ]
+test <- airline_satisfaction_imp[-sample, ]
+```
+
+Let's check that the distributions for satisfied and neutral/dissatisfied customers is the same.
+
+```{r}
+prop.table(table(airline_satisfaction_imp$satisfaction))
+
+prop.table(table(train$satisfaction))
+
+prop.table(table(test$satisfaction))
+```
+
+The frequencies for the response variables are about the same for the original dataset, the training dataset, and the testing dataset.
+
+We can now create a model for our data.
+
+#### Decision Tree 1
+
+For the first decision tree, we will simply input all of the available predictors and see what decision tree the algorithm automatically chooses.
+
+```{r}
+dt_mod1 <- rpart(satisfaction ~ ., method = "class", data = train)
+
+rpart.plot(dt_mod1, box.palette = "BuRd")
+```
+
+The decision tree has a root node based on the variable `online_boarding`. This is not surprising as it was the highest correlated with satisfaction. From this root node are three decision nodes of two variables, `inflight_wifi_service` and `type_of_travel`.
+
+#### Decision Tree 2
+
+Let's see how the tree changes when we remove the root node variable, `online_boarding`, from the predictors.
+
+```{r}
+dt_mod2 <- rpart(satisfaction ~ . - online_boarding, method = "class", data = train)
+
+rpart.plot(dt_mod2, box.palette = "BuRd")
+```
+
+The decision tree now consists of one root node, `class`, and ten decision nodes.
+
+### Random Forest
+
+```{r}
+rf_mod <- randomForest(satisfaction ~ ., data = train, ntree = 50)
+
+varImpPlot(rf_mod)
+```
+
+The random forest model factors in every variable. Here we can see the importance of each variable within the model.
+
+### Prediction and Evaluation
+
+Now, let's predict with each of these models and compare their accuracy.
+
+```{r}
+# decision tree 1: make predictions
+dt_mod1_pred <- predict(dt_mod1, test, type = "class")
+
+# confusion matrix
+dt_mod1_confusion_matrix <- confusionMatrix(dt_mod1_pred, test$satisfaction)
+
+dt_mod1_conf_matrix_df <- as.data.frame(dt_mod1_confusion_matrix$table) 
+dt_mod1_conf_matrix_df$Reference <- factor(dt_mod1_conf_matrix_df$Reference, levels = c("neutral or dissatisfied", "satisfied"))
+  
+plot1 <- dt_mod1_conf_matrix_df |>
+  ggplot(aes(x = Prediction, y = as.factor(Reference))) +
+  geom_tile(aes(fill = Freq), color = "white") +
+  scale_fill_gradient(low = "white", high = "palegreen3") +
+  labs(title = "Decision Tree 1",
+       x = "Predicted",
+       y = "Actual") +
+  geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1) +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# decision tree 2: make predictions
+dt_mod2_pred <- predict(dt_mod2, test, type = "class")
+
+# confusion matrix
+dt_mod2_confusion_matrix <- confusionMatrix(dt_mod2_pred, test$satisfaction)
+
+dt_mod2_conf_matrix_df <- as.data.frame(dt_mod2_confusion_matrix$table) 
+dt_mod2_conf_matrix_df$Reference <- factor(dt_mod2_conf_matrix_df$Reference, levels = c("neutral or dissatisfied", "satisfied"))
+  
+plot2 <- dt_mod2_conf_matrix_df |>
+  ggplot(aes(x = Prediction, y = as.factor(Reference))) +
+  geom_tile(aes(fill = Freq), color = "white") +
+  scale_fill_gradient(low = "white", high = "palegreen3") +
+  labs(title = "Decision Tree 2",
+       x = "Predicted",
+       y = "Actual") +
+  geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1) +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# random forest: make predictions
+rf_mod_pred <- predict(rf_mod, test, type = "class")
+
+# confusion matrix
+rf_mod_confusion_matrix <- confusionMatrix(rf_mod_pred, test$satisfaction)
+
+rf_mod_conf_matrix_df <- as.data.frame(rf_mod_confusion_matrix$table) 
+rf_mod_conf_matrix_df$Reference <- factor(rf_mod_conf_matrix_df$Reference, levels = c("neutral or dissatisfied", "satisfied"))
+  
+plot3 <- rf_mod_conf_matrix_df |>
+  ggplot(aes(x = Prediction, y = as.factor(Reference))) +
+  geom_tile(aes(fill = Freq), color = "white") +
+  scale_fill_gradient(low = "white", high = "palegreen3") +
+  labs(title = "Random Forest",
+       x = "Predicted",
+       y = "Actual") +
+  geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1) +
+  theme_bw() +
+  theme(legend.position = "none")
+
+plot_grid(plot1, plot2, plot3, nrow=2)
+```
+
+The first decision tree has a lot more false positives than false negatives whereas the second decision tree has a few more false negatives than false positives. Further, the second decision tree seems to have greater predictive accuracy in evaluating true positives and true negatives. The number of false positives is greatly reduced from the first decision tree to the second decision tree while the number of false negatives has decreased slightly.
+
+The random forest model has the greatest accuracy of all three models. It has the lowest number of false positives and false negatives and the most correctly predicted positives and negatives.
+
+Now let's compare the metrics for each model.
+
+```{r}
+keep <- c("Balanced Accuracy", "F1", "Specificity", "Precision", "Recall")
+
+# decision tree 1 metrics
+dt_mod1_metrics <- data.frame("DecisionTree1" = dt_mod1_confusion_matrix$byClass)
+
+dt_mod1_metrics$metric <- rownames(dt_mod1_metrics)
+
+dt_mod1_metrics <- dt_mod1_metrics |>
+  pivot_wider(names_from = metric,
+              values_from = c("DecisionTree1")) |>
+  dplyr::select(all_of(keep))
+
+# decision tree 2 metrics
+dt_mod2_metrics <- data.frame("DecisionTree2" = dt_mod2_confusion_matrix$byClass)
+
+dt_mod2_metrics$metric <- rownames(dt_mod2_metrics)
+
+dt_mod2_metrics <- dt_mod2_metrics |>
+  pivot_wider(names_from = metric,
+              values_from = c("DecisionTree2")) |>
+  dplyr::select(all_of(keep))
+
+# random forest metrics
+rf_mod_metrics <- data.frame("RandomForest" = rf_mod_confusion_matrix$byClass)
+
+rf_mod_metrics$metric <- rownames(rf_mod_metrics)
+
+rf_mod_metrics <- rf_mod_metrics |>
+  pivot_wider(names_from = metric,
+              values_from = c("RandomForest")) |>
+  dplyr::select(all_of(keep))
+
+# combine
+metrics <- data.frame(rbind(rbind(dt_mod1_metrics, dt_mod2_metrics), rf_mod_metrics))
+rownames(metrics) <- c("Decision Tree 1", "Decision Tree 2", "Random Forest")
+
+metrics |>
+  knitr::kable()
+```
+
+As we saw with the confusion matrices, the second decision tree model has greater accuracy than the first decision tree. This model also has greater specificity, precision, and recall, as well as a higher F1 score.
+
+While `online_boarding` is the most important variable from the automatically generated decision tree model, as it is the automatic root node, the removal of this variable results in a slightly more accurate model.
+
+The random forest model has the highest of all the metrics and is the most accurate model of the three, with 96% accuracy.
+
+### Conclusions
+
+Of the decision trees, it is clear which model performs better. The first model was automatically generated by R and started with a root node based on the rating which was most highly correlated with passenger satisfaction. The tree then branches into three decision nodes of two different variables. This tree has a very high level of accuracy at 88% accuracy. However, when we remove the root node of this variables from the predictors, we get a slightly larger tree starting with a root node of `class`. This second model predicts more instances of true negatives and true positives and has less than half the instances of false positives. This model also has almost 4% higher accuracy than the first model, with an accuracy of about 92%. All other metrics are also higher for this model.
+
+The random forest model, unsurprisingly, has the highest accuracy and performance metrics of all three models. Random forest models combine many decision trees so they tend to be more accurate than a single decision tree. However, decision trees are usually much more interpretable than random forests as we can see the logic play out in each of the decision nodes. For the random forest, we know which variables are important in the model but we do not necessarily know which factors from each predictor lead to higher satisfaction.
+
+If we wanted to use the second decision tree to make decisions on how we could improve our airline, we could use the second model's tree to see places where we can improve within each class. For example, we can see from the tree that people who are in business class and rate the `inflight_entertainment` either a 4 or 5 tend to be more satisfied than those who rate the `inflight_entertainment` as a 1,2, or 3. Based on this, if we improve our in-flight entertainment, passengers may be more satisfied. We might even want to split the data based on the classes and come up with separate decision trees to see which variables have the greatest impact on customer satisfaction for both classes. It stems logically that passengers who are seated in business class would be more satisfied than passengers sitting in economy because the chairs are larger and the amenities are usually better. If we re-train decision trees that are specific for each class, we might find insight into features and in-flight services that we could improve upon for each class to improve overall airline satisfaction.
+
+According to the article, ["The GOOD, The BAD & The UGLY of Using Decision Trees"](https://decizone.com/blog/the-good-the-bad-the-ugly-of-using-decision-trees), one of the "bad" aspects of decision trees is that your logic may evolve and so your decision tree may lose effectiveness. In this real-life scenario, the airline could re-train the model based on newer customer feedback to determine new areas of improvement.
+
+Another drawback of using decision trees, according to the article, is the repeated logic. We can see repeated logic in the second model's tree, as multiple branches start with a decision node of "`inflight_wifi_service` \>= 4." If you are creating a decision tree by hand, this may be challenging if you attempt to change this logic. But, when implemented through a program such as R, if you change this logic, the algorithm will be able to deal with those changes with ease.
+
+The article also argues the usability of decision trees, stating that good decision trees take a lot of time to create. When using a program, such as R, to create a decision tree, the program can create its own decision tree automatically, even without any preliminary analysis. One could just plug in all the predictor variables, such as we did with the first model, and the algorithm will iteratively choose the most important variables. While you will still want to evaluate the accuracy of this model and maybe play around with some other variables, it can give a good starting point which can then be implemented into later models. For example, one could determine the variables which have practically no importance in the model and choose to remove these for further analysis and model building. Also, by performing some exploratory analysis on the variables beforehand, one could determine their own predictors to combine into a decision tree model based on knowledge of the interactions of the predictors with the response variable.
+
+The articles further states that many decision tree solution do not provide meaningful metrics and reports for the decision tree is being used. Once again, programs like R can provide meaningul metrics when the correct packages are loaded. For example, the **caret** package contains many functions to provide meaningful metrics, such as the `confusionMatrix()` function which provides a matrix of the number of true positives, false positives, true negatives, and false negatives, as well as other accuracy metrics such as precision, recall, accuracy, F1 score, and many others.
+
+As we see, may of the authors qualms can be solved by using an appropriate program to implement the creation of decision trees.

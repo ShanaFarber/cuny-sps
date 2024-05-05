@@ -1,0 +1,407 @@
+---
+title: "DATA 622 - Homework 3"
+author: "Shoshana Farber"
+date: "May 5, 2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(snakecase)
+library(cowplot)
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(randomForest)
+library(RColorBrewer)
+library(corrplot)
+library(DataExplorer)
+library(e1071)
+```
+
+### Data
+
+In homework 2, I used a dataset of responses from an airline satistfaction survey to create a decision tree and a random forest model to predict customer satisfaction.  The dataset was taken from Kaggle and can be found [here](https://www.kaggle.com/datasets/teejmahal20/airline-passenger-satisfaction). It contains the results of an airline passenger satisfaction survey. 
+
+The dataset consists of 129,880 rows and 24 columns. The predictor variables include passenger details, such as gender, whether they are a loyal customer, age, type of travel, and which class they were sitting in, as well as information regarding the flight such as the flight distance, departure delays, and arrival delays. There are also several columns which are rated on a scale of 1-5 by the passenger, such as the quality of the food and drink, baggage handling, check in service, in flight service, seat comfort, cleanliness, etc. 
+
+The response variable for this dataset is `satisfaction` which can be either "satisfied" or "neutral or dissatisfied." 
+
+```{r}
+airline_satisfaction <- read.csv("https://raw.githubusercontent.com/ShanaFarber/cuny-sps/master/DATA_622/data/airline_satisfaction.csv")
+```
+
+### Data Exploration
+
+We can take a look at our data using the `glimpse()` function. 
+
+```{r}
+# change column names to snake case
+names(airline_satisfaction) <- to_snake_case(names(airline_satisfaction))
+
+glimpse(airline_satisfaction)
+```
+
+`id` is a unique identifier for each row and is not needed for modeling purposes so we can remove this column.
+
+```{r}
+airline_satisfaction <- airline_satisfaction |>
+  select(-id)
+```
+
+We know from homework 2 that `arrival_delay_in_minutes` is the only variable which is missing data. However, we also discovered from the data description that a “0” rating in any of the rating columns (`inflight_wifi_service`, `departure_arrival_time_convenient`, `ease_of_online_booking`, `gate_location`, `food_and_drink`, `online_boarding`, `seat_comfort`, `inflight_entertainment`, `on_board_service`, `leg_room_service`, `baggage_handling`, `checkin_service`, `inflight_service`, `cleanliness`) indicates a response that was not answered (not applicable).
+
+Let’s re-code the 0 instances to null values for each rating column.
+
+```{r}
+columns_to_recode <- c("inflight_wifi_service", "departure_arrival_time_convenient", "ease_of_online_booking", "gate_location", "food_and_drink", "online_boarding", "seat_comfort", "inflight_entertainment", "on_board_service", "leg_room_service", "baggage_handling", "checkin_service", "inflight_service", "cleanliness")  
+
+airline_satisfaction_imp <- airline_satisfaction |>
+  mutate_at(vars({{ columns_to_recode }}), ~if_else(. == 0, NA, .)) |>
+  ungroup()
+```
+
+Now, let's visualize the missing values. 
+
+```{r}
+plot_missing(airline_satisfaction_imp, 
+             missing_only = T,
+             ggtheme = theme_classic())
+```
+
+`departure_arrival_time_convenient` has the most missing values. The only non-rating column with missing values, `arrival_delay_in_minutes`, has about 0.3% missing. We will impute this column with the same imputation method as in homework 2, by imputing with zero, and we will remove rows where any rating is missing.
+
+```{r}
+airline_satisfaction_imp <- airline_satisfaction_imp |>
+  mutate(arrival_delay_in_minutes = ifelse(is.na(arrival_delay_in_minutes), 0, arrival_delay_in_minutes))
+
+airline_satisfaction_imp <- airline_satisfaction_imp |>
+  drop_na()
+
+nrow(airline_satisfaction_imp)
+```
+
+There are 119,567 rows remaining after removing rows with missing ratings. 
+
+Let's visualize the breakdown of satistfied and dissatisfied passengers in the dataset.
+
+```{r}
+# calculate counts and percents
+counts <- airline_satisfaction_imp %>%
+  count(satisfaction) |>
+  mutate(total = nrow(airline_satisfaction_imp),
+         perc = round(n / total * 100, 0))
+
+# plot
+counts %>%
+  ggplot(aes(x = satisfaction, y = n)) +
+  geom_bar(aes(fill = satisfaction), stat="identity") +
+  geom_text(aes(label = paste0(perc, '%')), vjust = 2, color = "white", fontface = 'bold') +
+  theme(legend.position = "none") +
+  labs(title = "Distribution of Response Variable", x = "Satisfaction", y = "Count")
+
+```
+
+About 57% of passengers were neutral or dissatisfied and about 43% were satisfied. About 14% more passengers were neutral or dissatisfied. 
+
+Let's take a look at the breakdown among different types of passengers. 
+
+#### Gender
+
+```{r}
+color_palette <- c("hotpink", "seagreen1")
+
+plot1 <- airline_satisfaction_imp |>
+  ggplot(aes(x = gender)) +
+  geom_bar() +
+  theme(legend.position = "none") +
+  labs(y = "Count", x = "Gender")
+
+plot2 <- airline_satisfaction_imp |>
+  ggplot(aes(x = gender)) +
+  geom_bar(aes(fill = satisfaction), position="dodge") +
+  scale_fill_manual(values = color_palette) +
+  theme(legend.position = "bottom") +
+  labs(y = "Count", x = "Gender")
+
+title <- ggdraw() + 
+  draw_label(
+    "Satisfaction by Gender",
+    fontface = 'bold',
+    x = 0,
+    hjust = -0.05
+  )
+
+plot_grid(title, plot1, plot2, ncol=1, rel_heights = c(0.15, 1, 1))
+```
+
+There are roughly the same amount of males and females in the dataset and the breakdown of satisfaction is also similar between both genders, with slightly more females identifying as neutral or dissatisfied. Because of how similar the breakdown is, we will not include this variable in our model. 
+
+#### Customer Type
+
+```{r}
+plot1 <- airline_satisfaction_imp |>
+  ggplot(aes(x = customer_type)) +
+  geom_bar() +
+  theme(legend.position = "none") +
+  labs(y = "Count", x = "Customer Type")
+
+plot2 <- airline_satisfaction_imp |>
+  ggplot(aes(x = customer_type)) +
+  geom_bar(aes(fill = satisfaction), position="dodge") +
+  scale_fill_manual(values = color_palette) +
+  theme(legend.position = "bottom") +
+  labs(y = "Count", x = "Customer Type")
+
+title <- ggdraw() + 
+  draw_label(
+    "Satisfaction by Customer Type",
+    fontface = 'bold',
+    x = 0,
+    hjust = -0.05
+  )
+
+plot_grid(title, plot1, plot2, ncol=1, rel_heights = c(0.15, 1, 1))
+```
+
+The majority of passengers identify themselves as loyal customers. For loyal customers, slightly more are neutral or dissatisfied. For disloyal customers, it appears that many more are neutral or dissatisfied. We will include this variable in our model. 
+
+#### Type of Travel
+
+```{r}
+plot1 <- airline_satisfaction_imp |>
+  ggplot(aes(x = type_of_travel)) +
+  geom_bar() +
+  theme(legend.position = "none") +
+  labs(y = "Count", x = "Type of Travel")
+
+plot2 <- airline_satisfaction_imp |>
+  ggplot(aes(x = type_of_travel)) +
+  geom_bar(aes(fill = satisfaction), position="dodge") +
+  scale_fill_manual(values = color_palette) +
+  theme(legend.position = "bottom") +
+  labs(y = "Count", x = "Type of Travel")
+
+title <- ggdraw() + 
+  draw_label(
+    "Satisfaction by Type of Travel",
+    fontface = 'bold',
+    x = 0,
+    hjust = -0.05
+  )
+
+plot_grid(title, plot1, plot2, ncol=1, rel_heights = c(0.15, 1, 1))
+```
+
+Majority of passengers in the dataset traveled for business. Majority of passengers who traveled for business were satisfied while majority of passengers traveling for business were neutral or dissatisfied. The difference between these two groups is stark. We will definitely use this variable in our model. 
+
+#### Class
+
+```{r}
+plot1 <- airline_satisfaction_imp |>
+  ggplot(aes(x = class)) +
+  geom_bar() +
+  theme(legend.position = "none") +
+  labs(y = "Count", x = "Class")
+
+plot2 <- airline_satisfaction_imp |>
+  ggplot(aes(x = class)) +
+  geom_bar(aes(fill = satisfaction), position="dodge") +
+  scale_fill_manual(values = color_palette) +
+  theme(legend.position = "bottom") +
+  labs(y = "Count", x = "Class")
+
+title <- ggdraw() + 
+  draw_label(
+    "Satisfaction by Class",
+    fontface = 'bold',
+    x = 0,
+    hjust = -0.05
+  )
+
+plot_grid(title, plot1, plot2, ncol=1, rel_heights = c(0.15, 1, 1))
+```
+
+Most passengers were in either business or economy. Majority of business class passengers were satisfied while majority of economy and economy plus passengers were neutral or dissatisfied. Once again, the difference is stark and we will include this variable in our model. 
+
+Let's check to see which numeric variables are most highly correlated with satisfaction to add to our model. 
+
+```{r}
+numeric_vars <- names(airline_satisfaction_imp[,sapply(airline_satisfaction_imp, is.numeric)])
+
+airline_satisfaction_imp |>
+  mutate(satisfaction = ifelse(satisfaction == "satisfied", 1, 0)) |> # dummy var for satisfaction (0 - neutral or dissatisfied, 1 - satisfied)
+  select(satisfaction, all_of(numeric_vars)) |>
+  cor() |>
+  corrplot(method="color", 
+           diag=FALSE,
+           type="lower",
+           addCoef.col = "black",
+           number.cex=0.35,
+           tl.cex=0.5)
+```
+
+Looking down the first column, we can see the variable which are correlated with satisfaction. The most highly correlated variable is `online_boarding`, which makes sense as this was our root node in homework 2. 
+
+`departure_delay_in_minutes` and `arrival_delay_in_minutes` are barely correlated with satisfaction, as well as `gate_location` and `departure_arrival_time_convenient`. 
+
+`age`, `ease_of_online_booking`, `food_and_drink`, and `checkin_service` are very slightly correlated.
+
+For our model, we will only use variables which are correlated above 0.3. We will also use `class` and `type_of_travel` as responses seem to vastly differ between classes and between types of travelers, as was seen in the bar plot. 
+
+### Data Preparation
+
+For classification, SVMs require that the dependent variable be either numeric or a factor. We will need to re-code the dependent variable `satisfaction` to be a factor.
+
+```{r}
+airline_satisfaction_imp <- airline_satisfaction_imp |>
+  mutate(satisfaction = as.factor(satisfaction))
+```
+
+Let’s split the data into a training and testing set. We will use an 80% training set and 20% testing set.
+
+```{r}
+set.seed(613)
+
+sample <- sample(nrow(airline_satisfaction_imp), round(nrow(airline_satisfaction_imp) * 0.8), replace = FALSE)
+
+train <- airline_satisfaction_imp[sample, ]
+test <- airline_satisfaction_imp[-sample, ]
+```
+
+Let’s check that the distributions for satisfied and neutral/dissatisfied customers is the same.
+
+```{r}
+prop.table(table(airline_satisfaction_imp$satisfaction))
+
+prop.table(table(train$satisfaction))
+
+prop.table(table(test$satisfaction))
+```
+
+The frequencies for the response variables are about the same for the original dataset, the training dataset, and the testing dataset. 
+
+### SVM Model
+
+We can now build an SVM model with our chosen variables. 
+
+```{r}
+svm_mod <- svm(satisfaction ~ type_of_travel + customer_type + class + flight_distance + inflight_wifi_service + online_boarding + seat_comfort + inflight_entertainment + on_board_service + leg_room_service + cleanliness, 
+               data = train,
+               type = 'C-classification',
+               kernel = "radial")
+
+svm_mod
+```
+
+### Prediction and Evaluation
+
+Let's predict with the model and check the accuracy. 
+
+```{r}
+pred <- predict(svm_mod, test, type="class")
+```
+
+We can take a look at the confusion matrix for this model to see the correct and incorrect instances of classification. 
+
+```{r warning=F}
+# confusion matrix
+confusion_matrix <- confusionMatrix(pred, test$satisfaction)
+
+conf_matrix_df <- as.data.frame(confusion_matrix$table) 
+conf_matrix_df$Prediction <- factor(conf_matrix_df$Prediction, levels = c("satisfied", "neutral or dissatisfied"))
+conf_matrix_df$Reference <- factor(conf_matrix_df$Reference, levels = c("neutral or dissatisfied", "satisfied"))
+  
+conf_matrix_df |>
+  ggplot(aes(x = Prediction, y = as.factor(Reference))) +
+  geom_tile(aes(fill = Freq), color = "white") +
+  scale_fill_gradient(low = "white", high = "palegreen3") +
+  labs(title = "SVM Model",
+       x = "Predicted",
+       y = "Actual") +
+  geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1) +
+  theme_bw() +
+  theme(legend.position = "none")
+```
+
+The model is overall very accurate, with only less than 1,500 out of almost 24,000 instances incorrectly classified. There are more instances of false negatives than false positives. 
+
+```{r}
+keep <- c("Balanced Accuracy", "F1", "Specificity", "Precision", "Recall")
+
+model_metrics <- data.frame("SVM" = confusion_matrix$byClass)
+
+model_metrics$metric <- rownames(model_metrics)
+
+model_metrics <- model_metrics |>
+  pivot_wider(names_from = metric,
+              values_from = c("SVM")) |>
+  dplyr::select(all_of(keep))
+
+model_metrics |>
+  knitr::kable()
+```
+
+The model has an overall accuracy of about 94% and an F1 score of about 0.93. It has a specificity of almost 96% (96% accuracy for predicting true negatives) and a recall of about 92% (92% accuracy for predicting true positives). It also has a precision of 94% (94% of positives predicted by the model are true positives). 
+
+Overall, the model is pretty accurate in predicting the satisfaction of passengers based on their survey responses. 
+
+### Discussion - Comparison to Homework 2
+
+Let's compare the results of the SVM model we just built to the decision tree models and random forest model from the previous homework. We can take a look at the confusion matrices for each model and compare their accuracy.
+
+![](C:/Users/Shoshana/Pictures/Screenshots/Screenshot 2024-05-03 161413.png)
+
+In the last homework, two decision tree models were created. The first decision tree was created automatically by loading all the variables into the formula. This resulted in a decision tree beginning with the root node `online_boarding` >= 4. The second decision tree was created by removing the variable `online_boarding` from the formula and inputting the remaining variables into the formula. This resulted in a decision tree with a root node of `class` = Business. Even though `online_boarding` was the most influential variable in the dataset, as was also seen in the correlation matrix, the decision tree model without this variable actually performed better overall on the test set, with fewer instances of both false positives and false negatives and a slightly greater number of correct classifications. 
+
+The third model for the previous homework was a random forest model. This was created by once again plugging all of the variables into the formula. The most important variable for the random forest model was, unsurprisingly, `online_boarding`. The random forest model greatly outperformed the previous two decision tree models, with less than 1,00 out of almost 24,000 instances incorrectly classified. 
+
+In the SVM model that we have built in this homework, variables were excluded that had little to no correlation with the response variable, `satisfaction`. The resultant model has greater accuracy than both decision tree models, but it is outperformed by the random forest model. The random forest model has about 600 more correctly classified instances. 
+
+The performance metrics of the models from the previous homework are as follows:
+
+![](C:/Users/Shoshana/Pictures/Screenshots/Screenshot 2024-05-01 174814.png)
+
+Comparing these metrics to the performance metrics from the SVM model, we can see that the SVM model significantly outperforms both decision tree models in terms of accuracy. The SVM model also has a much higher F1 score than both decision tree models. It also has a greater specificity, recall, and precision than both decision tree models. The random forest model has greater accuracy, a larger F1 score, greater specificity, recall, and precision than all other models. 
+
+Based on the number of correctly and incorrectly classified instances as shown in the confusion matrices, and the accuracy metrics for the models, the random forest model is the best performing model for the data. This model has the greatest overall accuracy of the four models. Random forest models are robust models that are good for both classification and regression problems. They are highly popular for classification techniques because of their ability to handle highly-dimensional data with complex decision boundaries. I would agree with this model recommendation because it is the most accurate, outperforming the other three models. While it is more computationally expensive to create the random forest model over the decision tree models, it is also much more accurate. Conversely, it is less computationally expensive and ran much faster than the SVM model, with higher accuracy. Random forest models are also known to be less prone to overfitting, so this is a good model to use when there is high-dimensionality or when there is a lot of noise in the dataset. 
+
+### Discussion - Articles 
+
+Two studies in 2021 focused on prediction of Covid-19 from among a group of patients. The first, _Ahmad et al._ (2021), attempted to use various ensemble decision tree methods with oversampling and undersampling techniques. The authors procured a dataset of over 5,500 patients. The authors filtered out records that were missing any of the measured predictor variables, resulting in a dataset of 600 patients, majority of whom presented negative for Covid-19, and 18 predictor variables. In their study, the authors compared the accuracy of single decision trees against ensemble decision tree methods, such as random forest, bagging, XGBoost, and AdaBoost. They also tested whether these metrics could be improved for this unbalanced dataset by using random undersampling (RUS) or synthetic minority oversampling techniques (SMOTE). In the comparitive study of the various decision tree ensemble methods  (Table 2 on Page 4), the random forest model has the best overall accuracy. The accuracy of the random forest model, without any undersampling or oversampling techniques to balance the dataset, measured at about 87.8%. The accuracy of the single decision tree model was about 84.5%. In the second study, _Guhathakurata et al._ (2021) attempted to use an SVM classifier to predict Covid-19 infection. Rather than predict positive or negative results, the authors attempted to classify the results into three separate classes, "not infected", "mildly infected", and "severely infected". This study uses a smaller dataset of just 200 records and 8 predictor variables. The authors cite an accuracy of 87% using SVM. 
+
+_Guhathakurata et al._ (2021), also compared different machine learning methods to prove that SVM was the most accurate predictor for their data. In their comparitive study, they showed that the SVM model significantly outperformed all other models, including tree and random forest. For the tree and SVM models, respectively, the authors measured 79% and 97% accuracy. Thus, the SVM model is clearly the superior model in this case. The accuracy of the random forest model is much improved over the tree model, but it still underperforms in comparison to the SVM model. 
+
+In _Ahmad et al._ (2021), the authors were able to further improve their model by using ensemble decision tree methods (random forest) with undersampling techniques (RUS) while including a variable for age, for an overall accuracy of about 89.2%. The authors further suggest comparing these results with an SVM classifier for the data, however they do not directly implement an SVM model in their study. 
+
+For our data, we are able to directly compare the accuracy of the SVM model and the decision tree models, as we have used the same data with the same splits. As the dataset is slightly unbalanced, we could take inspiration from the results of _Ahmad et al._ (2021) to attempt to use some undersampling techniques to see if we could improve our random forest model. 
+
+The authors of both studies tested the affects of excluding and including variables in the model. In _Ahmad et al._ (2021), the authors included a variable for age in some of the models, resulting in improved accuracy for majority of the models. Conversely, the authors of _Guhathakurata et al._ (2021), in their comparative study, tested reducing the data by excluding some of the variables in the dataset. For our data, we could test how the inclusion or exclusion of different variables affects our models. As we saw with the decision trees, the removal of the `online_boarding` variable seemed to significantly improve the performance of the model, with an increase of about 4%. The random forest model, which includes all of the available variables in the dataset, has the highest accuracy of all the models when predicting on unseen data. However, we could test how removing lesser correlated variables may affect this accuracy. For the SVM model, we chose specific variables based on their correlation to the response variable. We could test how the model is affected by including all of the available variables, or by increasing our threshold of correlation. We could also compare the accuracies of the random forest, decision tree, and SVM models when using the same reduced variables. 
+
+In a study similar to our own, _Baswardono et al._ (2019) compare the use of decision trees vs. random forest modeling in predicting airline customer satisfaction. Using the same Kaggle dataset as our own, the authors used ten-fold cross validation to determine the best train:test split to use for the each algorithm. For both, a 90:10 split was selected. They compared the use of a C4.5 decision tree against a random forest model. The accuracy for the decision tree model was 93.31% and the accuracy for the random forest model was 93.32%. The authors concluded that the random forest model was more accurate, although the difference in accuracies is extremely slight when using the 90:10 split in the data. For our study, we used an 80:20 split. Based on the results of the study by _Baswardono et al._ (2019), I would test the accuracy of my models at different split levels to see if the accuracy is improved by implementing a different train:split ratio. 
+
+Another study attempted to predict airline passenger satisfaction using machine learning methods. However, instead of using a traditional survey, the authors opted to use sentiment analysis of social media postings. Specifically, in _Kumar et al._ (2019), the authors developed classification models for positive and negative sentiment in tweets which mention popular airlines. This study used SVM and other machine learning algorithms for binary classification of positive and negative tweets. The tweets were converted into feature vectors and then each machine learning model was trained. In this study, the SVM model was ultimately outperformed by another machine learning model. However, the author tested models at several different n-grams to see which number of n-grams would yield the highest accuracy for each model. 
+
+A similar study attempted to compare the accuracy of SVM and decision trees in predicting customer satisfaction. _Nurfaizah et al._ (2019) also used sentiment analysis in their study, analyzing Google Play reviews for Indonesian shopping app, Shopee. In this study, the SVM model had higher accuracy than the decision tree model in predicting customer sentiment.
+
+While these studies differ from our analysis in the type of data that is being analyzed (sentiment analysis vs. survey response analysis), it is interesting to see other ways of performing customer satisfaction analyses using the same methods. In the case of our airline survey, the specific ratings that we request may not be fully indicative of the passengers entire experience. For example, while a passenger may rate majority of the variables highly, they may have had a bad experience with a flight attendant or gate agent that caused them to be unsatisfied with their flight. As such, the airline could add another variable to their survey for any comments or concerns a passenger may have. Then, using sentiment analysis techniques to predict an overall positive or negative sentiment for these reviews, the airline could possibly more accurately predict this particular passenger's satisfaction. 
+
+### Conclusions
+
+The SVM model is a powerful tool for classification techniques. When applied to our dataset, the model has an overall accuracy of about 94%. It has a few more instances of false negatives than false positives, but incorrectly classified instances make up only about 6% of the results. 
+
+When we compare this new SVM model against our models from homework 2, it outperforms both the decision tree models but it outperformed by the random forest model. The random forest model has an accuracy of about 96% which is about 2% higher than the accuracy for the SVM model. The random forest model is also less computationally expensive and takes less time to run than the SVM model, so this is the ideal model for this dataset. The SVM model, however, contains slightly more specifically chosen variables than the random forest model, as variables were chosen based on a threshold for correlation (correlation greater than 0.3 with the response variable). For the random forest model, all variables were loaded in to the model. For further analysis, I would see if the accuracy of the random forest model is affected with the removal of some lesser correlated variables. 
+
+### References
+
+1. Ahmad, A., Safi, O. Malebary, S., Alesawi, S., and Alkayal, E. (2021). "Decision Tree Ensembles to Predict Coronavirus Disease 2019 Infection: A Comparative Study". _Complexity_, vol. 2021, Article ID 5550344, 8 pages, 2021. https://doi.org/10.1155/2021/5550344.
+
+2. Baswardono, W., Kurniadi, D., Mulyani, A., & Arifin, D. M. (2019). "Comparative analysis of decision tree algorithms: Random Forest and C4.5 for Airlines Customer Satisfaction Classification." _Journal of Physics: Conference Series_, 1402(6), 066055. https://doi.org/10.1088/1742-6596/1402/6/066055 
+
+3. Guhathakurata, S., Kundu, S., Chakraborty, A., Banerjee, J.S. (2021). "A novel approach to predict COVID-19 using support vector machine". _Data Science for COVID-19_, 2021:351–64, doi: 10.1016/B978-0-12-824536-1.00014-9. Epub 2021 May 21. PMCID: PMC8137961.
+
+4. Kumar, S., & Zymbler, M. (2019). "A machine learning approach to analyze customer satisfaction from airline tweets". _Journal of Big Data_, 6(1). https://doi.org/10.1186/s40537-019-0224-1 
+
+5. Nurfaizah, Hariguna, T., and Romadon, Y. I. (2019). "The accuracy comparison of vector support machine and decision tree methods in sentiment analysis." _Journal of Physics: Conference Series_, 1367(1), 012025. https://doi.org/10.1088/1742-6596/1367/1/012025 
