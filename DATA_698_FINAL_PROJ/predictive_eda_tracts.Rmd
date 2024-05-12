@@ -1,0 +1,583 @@
+---
+title: "Predictive EDA"
+author: "Shoshana Farber"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(corrplot)
+library(ResourceSelection)
+library(DataExplorer)
+library(mice)
+library(randomForest)
+library(xgboost)
+library(caret)
+library(dplyr)
+```
+
+### Load Data
+
+```{r}
+load("data/census_crime_joined.RData")
+```
+
+Check dimensions.
+
+```{r}
+dim(nyc_data_percent_tracts)
+```
+
+`nyc_data_percent_tracts` has 2043 rows of 25 variables.  
+
+### Data Prep
+
+Extract county from `NAME` for New York. 
+
+```{r}
+nyc_data_percent_tracts <- nyc_data_percent_tracts |>
+  mutate(borough = toupper(str_remove_all(str_extract(NAME, ",.*,"), "(,\\s|County,)")))
+```
+
+Check for missing data.
+
+```{r}
+# NY
+plot_missing(nyc_data_percent_tracts,
+             missing_only = T,
+             ggtheme = theme_classic(),
+             theme_config = list(legend.position = c("right")),
+             geom_label_args = list("size" = 3, "label.padding" = unit(0.3, "lines")))
+```
+
+There are a number of rows in each dataset which are missing values, however none are missing enough data to be extremely concerning.  
+
+The columns with the most missing values in the `totals` datasets for NYC and LA are those for `median_age`, `median_income`, `median_earning`, and `median_household_income`. 
+
+Based on a glance of the data, those that are missing percentages have a `total_pop` of 0. We will use mean imputation for these rows. 
+
+```{r}
+nyc_data_percent_tracts <- nyc_data_percent_tracts |>
+  filter(total_pop != 0)
+```
+
+```{r}
+# NY
+plot_missing(nyc_data_percent_tracts,
+             missing_only = T,
+             ggtheme = theme_classic(),
+             theme_config = list(legend.position = c("right")),
+             geom_label_args = list("size" = 3, "label.padding" = unit(0.3, "lines")))
+```
+
+For those missing data, less than 2% is missing. 
+
+```{r}
+plot1 <- nyc_data_percent_tracts |>
+  ggplot(aes(x = num_crimes)) +
+  geom_histogram(bins=40) +
+  theme_classic() +
+  labs(title = "Overall Crimes", x = "Number of Crimes", y = "Count")
+
+plot2 <- nyc_data_percent_tracts |>
+  ggplot(aes(x = major_felonies)) +
+  geom_histogram(bins=40) +
+  theme_classic() +
+  labs(title = "Major Felonies", x = "Number of Crimes", y = "Count")
+
+plot3 <- nyc_data_percent_tracts |>
+  ggplot(aes(x = drug_crimes)) +
+  geom_histogram(bins=40) +
+  theme_classic() +
+  labs(title = "Drug Related Crimes", x = "Number of Crimes", y = "Count")
+
+plot4 <- nyc_data_percent_tracts |>
+  ggplot(aes(x = property_crimes)) +
+  geom_histogram(bins=40) +
+  theme_classic() +
+  labs(title = "Property Related Crimes", x = "Number of Crimes", y = "Count")
+
+cowplot::plot_grid(plot1, plot2, plot3, plot4, nrow=2)
+```
+
+```{r}
+nyc_data_percent_tracts |>
+  select(num_crimes, major_felonies, drug_crimes, property_crimes) |>
+  summary()
+```
+
+Impute with mean of column for missing values. 
+
+```{r}
+nyc_data_percent_tracts_imp <- nyc_data_percent_tracts |>
+  mutate(across(where(is.numeric), ~ifelse(is.na(.), mean(., na.rm = TRUE), .)))
+```
+
+```{r}
+nyc_data_percent_tracts_imp |>
+  select(where(is.numeric)) |>
+  cor() |>
+  corrplot(method="color", 
+           diag=FALSE,
+           type="lower",
+           addCoef.col = "black",
+           number.cex=0.35,
+           tl.cex=0.5)
+```
+
+```{r}
+nyc_data_percent_tracts_imp |>
+  filter(num_crimes < 2500) |>
+  select(where(is.numeric)) |>
+  cor() |>
+  corrplot(method="color", 
+           diag=FALSE,
+           type="lower",
+           addCoef.col = "black",
+           number.cex=0.35,
+           tl.cex=0.5)
+```
+
+### Modeling
+
+```{r}
+nyc_data_full <- nyc_data_percent_tracts_imp |>
+  drop_na()
+
+set.seed(613) 
+
+nyc_train <- nyc_data_full |>
+                  group_by(borough) |>
+                  sample_frac(size=.80) |>
+  ungroup() |>
+  dplyr::select(-GEOID, -NAME, -geometry, -borough, -major_felonies, -drug_crimes, -property_crimes)
+
+train_indices <- match(rownames(nyc_train), rownames(nyc_data_full))
+
+nyc_test <- nyc_data_full[-train_indices, ] |>
+  dplyr::select(-GEOID, -NAME, -geometry, -borough, -major_felonies, -drug_crimes, -property_crimes)
+```
+
+
+```{r}
+set.seed(613)
+
+rf_model <- randomForest(num_crimes ~ ., 
+                         data = nyc_train,
+                         importance = T,
+                         ntree = 1000,
+                         preProc = c("center", "scale"))
+
+rf_model
+
+pred <- predict(rf_model, nyc_test)
+
+postResample(pred, nyc_test$num_crimes)
+
+varImp(rf_model) |>
+  rownames_to_column(var="Variable") |>
+  ggplot(aes(x = Overall, y = reorder(Variable, Overall))) +
+  geom_bar(stat="identity", fill="orange") +
+  labs(y = "Variable") +
+  theme_classic()
+```
+
+
+
+Top 3 features are `median_house_income`, `perc_single_parent_home`, and `perc_fam_below_poverty`. 
+
+Let's try an XGBoost model. 
+
+```{r}
+set.seed(613) 
+
+X_train <- nyc_train |>
+  select(-num_crimes)
+y_train <- nyc_train$num_crimes  # Extract the target column
+
+X_test <- nyc_test |>
+  select(-num_crimes)
+y_test <- nyc_test$num_crimes  # Extract the target column
+
+xgboost_model <- xgboost(data = as.matrix(X_train), 
+                 label = y_train, 
+                 objective = "reg:squarederror", 
+                 nrounds = 100,  # number of iterations
+                 eta = 0.3,       # learning rate
+                 max_depth = 6,   # max depth
+                 subsample = 0.8, # subsample ratio of training
+                 colsample_bytree = 0.8)  # subsample ratio of columns
+
+pred <- predict(xgboost_model, as.matrix(X_test))
+
+postResample(pred, y_test)
+```
+
+The XGBoost model has about 78% accuracy in predicting on the test set, slightly less than the Random Forest model. 
+
+```{r}
+xgb.importance(feature_names = colnames(nyc_train$data), model = xgboost_model) |>
+  ggplot(aes(x = Gain, y = reorder(Feature, Gain))) +
+  geom_bar(stat="identity", fill="orange") +
+  theme_classic()
+```
+
+### Filtered Approach
+
+```{r}
+nyc_data_percent_tracts_imp |>
+  filter(num_crimes > 2500)
+```
+
+A few tracts make up majority of the crimes in the dataset. While these areas are targets for preventative measures, they also skew the ability of the model to be able to account for variability in the model. We can improve the accuracy of the model by filtering out these variables. 
+
+```{r}
+nyc_data_full <- nyc_data_percent_tracts_imp |>
+  filter(num_crimes < 2500) |>
+  drop_na()
+
+set.seed(613) 
+
+nyc_train <- nyc_data_full |>
+                  group_by(borough) |>
+                  sample_frac(size=.80) |>
+  ungroup() |>
+  dplyr::select(-GEOID, -NAME, -geometry, -borough, -major_felonies, -drug_crimes, -property_crimes, -perc_vacant)
+
+train_indices <- match(rownames(nyc_train), rownames(nyc_data_full))
+
+nyc_test <- nyc_data_full[-train_indices, ] |>
+  dplyr::select(-GEOID, -NAME, -geometry, -borough, -major_felonies, -drug_crimes, -property_crimes, -perc_vacant)
+```
+
+```{r}
+set.seed(613)
+
+rf_model <- randomForest(num_crimes ~ ., 
+                         data = nyc_train,
+                         importance = T,
+                         ntree = 1000,
+                         preProc = c("center", "scale"))
+
+rf_model
+
+varImp(rf_model) |>
+  rownames_to_column(var="Variable") |>
+  ggplot(aes(x = Overall, y = reorder(Variable, Overall))) +
+  geom_bar(stat="identity", fill="orange") +
+  labs(y = "Variable") +
+  theme_classic()
+```
+
+When we filter out extremely high crime areas, the model accuracy improves to 42.97%. At the same time, `total_pop` becomes the most important feature, followed by `perc_single_parent_home` and `median_household_income`. 
+
+```{r}
+pred <- predict(rf_model, nyc_test)
+
+postResample(pred, nyc_test$num_crimes)
+```
+
+This model has 79% accuracy in predicting on the test set. 
+
+Let's try an XGBoost model. 
+
+```{r}
+set.seed(613)
+
+X_train <- nyc_train |>
+  select(-num_crimes)
+y_train <- nyc_train$num_crimes  # Extract the target column
+
+X_test <- nyc_test |>
+  select(-num_crimes)
+y_test <- nyc_test$num_crimes  # Extract the target column
+
+xgboost_model <- xgboost(data = as.matrix(X_train), 
+                 label = y_train, 
+                 objective = "reg:squarederror", 
+                 nrounds = 100,  # number of iterations
+                 eta = 0.3,       # learning rate
+                 max_depth = 6,   # max depth
+                 subsample = 0.8, # subsample ratio of training
+                 colsample_bytree = 0.8)  # subsample ratio of columns
+
+pred <- predict(xgboost_model, as.matrix(X_test))
+
+postResample(pred, y_test)
+```
+
+The XGBoost model has about 80% accuracy in predicting on the test set, slightly improved over the Random Forest model. 
+
+```{r warning=F}
+xgb.importance(feature_names = colnames(nyc_train$data), model = xgboost_model) |>
+  ggplot(aes(x = Gain, y = reorder(Feature, Gain))) +
+  geom_bar(stat="identity", fill="orange") +
+  labs(y = "Variable") +
+  theme_classic()
+```
+
+The same variable are important in the XGBoost model.
+
+### Specific Crimes 
+
+Major Felonies - Filtered Approach. 
+
+```{r}
+nyc_data_full <- nyc_data_percent_tracts_imp |>
+  filter(num_crimes < 2500) |>
+  drop_na()
+
+set.seed(613) 
+
+nyc_train <- nyc_data_full |>
+                  group_by(borough) |>
+                  sample_frac(size=.80) |>
+  ungroup() |>
+  dplyr::select(-GEOID, -NAME, -geometry, -borough, -num_crimes, -drug_crimes, -property_crimes, -perc_vacant)
+
+train_indices <- match(rownames(nyc_train), rownames(nyc_data_full))
+
+nyc_test <- nyc_data_full[-train_indices, ] |>
+  dplyr::select(-GEOID, -NAME, -geometry, -borough, -num_crimes, -drug_crimes, -property_crimes, -perc_vacant)
+```
+
+```{r}
+set.seed(613)
+
+X_train <- nyc_train |>
+  select(-major_felonies)
+y_train <- nyc_train$major_felonies  # Extract the target column
+
+X_test <- nyc_test |>
+  select(-major_felonies)
+y_test <- nyc_test$major_felonies  # Extract the target column
+
+xgboost_model <- xgboost(data = as.matrix(X_train), 
+                 label = y_train, 
+                 objective = "reg:squarederror", 
+                 nrounds = 100,  # number of iterations
+                 eta = 0.3,       # learning rate
+                 max_depth = 6,   # max depth
+                 subsample = 0.8, # subsample ratio of training
+                 colsample_bytree = 0.8)  # subsample ratio of columns
+
+pred <- predict(xgboost_model, as.matrix(X_test))
+
+postResample(pred, y_test)
+```
+
+The XGBoost model has about 80% accuracy in predicting on the test set, slightly improved over the Random Forest model. 
+
+```{r warning=F}
+xgb.importance(feature_names = colnames(nyc_train$data), model = xgboost_model) |>
+  ggplot(aes(x = Gain, y = reorder(Feature, Gain))) +
+  geom_bar(stat="identity", fill="lightblue") +
+  labs(y = "Variable") +
+  theme_classic()
+```
+
+Drug Crimes - Filtered Approach. 
+
+```{r}
+nyc_data_full <- nyc_data_percent_tracts_imp |>
+  filter(num_crimes < 2500) |>
+  drop_na()
+
+set.seed(613) 
+
+nyc_train <- nyc_data_full |>
+                  group_by(borough) |>
+                  sample_frac(size=.80) |>
+  ungroup() |>
+  dplyr::select(-GEOID, -NAME, -geometry, -borough, -num_crimes, -major_felonies, -property_crimes, -perc_vacant)
+
+train_indices <- match(rownames(nyc_train), rownames(nyc_data_full))
+
+nyc_test <- nyc_data_full[-train_indices, ] |>
+  dplyr::select(-GEOID, -NAME, -geometry, -borough, -num_crimes, -major_felonies, -property_crimes, -perc_vacant)
+```
+
+```{r}
+set.seed(613)
+
+X_train <- nyc_train |>
+  select(-drug_crimes)
+y_train <- nyc_train$drug_crimes  # Extract the target column
+
+X_test <- nyc_test |>
+  select(-drug_crimes)
+y_test <- nyc_test$drug_crimes  # Extract the target column
+
+xgboost_model <- xgboost(data = as.matrix(X_train), 
+                 label = y_train, 
+                 objective = "reg:squarederror", 
+                 nrounds = 100,  # number of iterations
+                 eta = 0.3,       # learning rate
+                 max_depth = 6,   # max depth
+                 subsample = 0.8, # subsample ratio of training
+                 colsample_bytree = 0.8)  # subsample ratio of columns
+
+pred <- predict(xgboost_model, as.matrix(X_test))
+
+postResample(pred, y_test)
+```
+
+```{r warning=F}
+xgb.importance(feature_names = colnames(nyc_train$data), model = xgboost_model) |>
+  ggplot(aes(x = Gain, y = reorder(Feature, Gain))) +
+  geom_bar(stat="identity", fill="lightblue") +
+  labs(y = "Variable") +
+  theme_classic()
+```
+
+Property Crimes - Filtered Approach. 
+
+```{r}
+nyc_data_full <- nyc_data_percent_tracts_imp |>
+  filter(num_crimes < 2500) |>
+  drop_na()
+
+set.seed(613) 
+
+nyc_train <- nyc_data_full |>
+                  group_by(borough) |>
+                  sample_frac(size=.80) |>
+  ungroup() |>
+  dplyr::select(-GEOID, -NAME, -geometry, -borough, -num_crimes, -drug_crimes, -major_felonies, -perc_vacant)
+
+train_indices <- match(rownames(nyc_train), rownames(nyc_data_full))
+
+nyc_test <- nyc_data_full[-train_indices, ] |>
+  dplyr::select(-GEOID, -NAME, -geometry, -borough, -num_crimes, -drug_crimes, -major_felonies, -perc_vacant)
+```
+
+```{r}
+set.seed(613)
+
+X_train <- nyc_train |>
+  select(-property_crimes)
+y_train <- nyc_train$property_crimes  # Extract the target column
+
+X_test <- nyc_test |>
+  select(-property_crimes)
+y_test <- nyc_test$property_crimes  # Extract the target column
+
+xgboost_model <- xgboost(data = as.matrix(X_train), 
+                 label = y_train, 
+                 objective = "reg:squarederror", 
+                 nrounds = 100,  # number of iterations
+                 eta = 0.3,       # learning rate
+                 max_depth = 6,   # max depth
+                 subsample = 0.8, # subsample ratio of training
+                 colsample_bytree = 0.8)  # subsample ratio of columns
+
+pred <- predict(xgboost_model, as.matrix(X_test))
+
+postResample(pred, y_test)
+```
+
+```{r warning=F}
+xgb.importance(feature_names = colnames(nyc_train$data), model = xgboost_model) |>
+  ggplot(aes(x = Gain, y = reorder(Feature, Gain))) +
+  geom_bar(stat="identity", fill="lightblue") +
+  labs(y = "Variable") +
+  theme_classic()
+```
+
+For each of the selective models, the variability explained is less than the overall crime model. The specific crime models account for about 20-30% of the variability while the overall crime model accounts for about 43%. 
+
+For each model, the top 3 predictors include `total_pop`, `perc_single_parent_home` and `median_household_income`, except for the property crime model. Interestingly, `perc_bs` appears in the top 3, and `median_household_income` appears as the fourth most important predictor.  
+
+### Prediction on LA
+
+```{r}
+nyc_data_full <- nyc_data_percent_tracts_imp 
+
+set.seed(613) 
+
+nyc_train <- nyc_data_full |>
+  dplyr::select(-GEOID, -NAME, -geometry, -borough, -major_felonies, -drug_crimes, -property_crimes, -perc_vacant)
+```
+
+```{r}
+set.seed(613) 
+
+X_train <- nyc_train |>
+  select(-num_crimes)
+y_train <- nyc_train$num_crimes  # Extract the target column
+
+xgboost_model <- xgboost(data = as.matrix(X_train), 
+                 label = y_train, 
+                 objective = "reg:squarederror", 
+                 nrounds = 100,  # number of iterations
+                 eta = 0.3,       # learning rate
+                 max_depth = 6,   # max depth
+                 subsample = 0.8, # subsample ratio of training
+                 colsample_bytree = 0.8)  # subsample ratio of columns
+
+pred <- predict(xgboost_model, as.matrix(X_test))
+
+postResample(pred, y_test)
+```
+
+```{r}
+la_data_percent_tracts |>
+  plot_missing(missing_only = T,
+             ggtheme = theme_classic(),
+             theme_config = list(legend.position = c("right")),
+             geom_label_args = list("size" = 3, "label.padding" = unit(0.3, "lines")))
+
+la_data_percent_tracts <- la_data_percent_tracts |>
+  filter(total_pop > 0)
+
+la_data_percent_tracts_imp <- la_data_percent_tracts |>
+  mutate(across(where(is.numeric), ~ifelse(is.na(.), mean(., na.rm = TRUE), .)))
+
+la_test <- la_data_percent_tracts_imp |>
+  select(-GEOID, -NAME, -geometry, -perc_vacant)
+
+X_test <- la_test |>
+  select(-num_crimes)
+y_test <- la_test$num_crimes  # Extract the target column
+```
+
+```{r}
+pred <- predict(xgboost_model, as.matrix(X_test))
+
+postResample(pred, y_test)
+```
+
+The model performs extremely poorly for the LA sample. This indicates that the model is probably overfit to New York data. 
+
+```{r}
+set.seed(613)
+
+nyc_train <- nyc_train |>
+  filter(num_crimes < 2500)
+
+X_train <- nyc_train |>
+  select(-num_crimes)
+y_train <- nyc_train$num_crimes  # Extract the target column
+
+la_test <- la_test |>
+  filter(num_crimes < 2500)
+
+X_test <- la_test |>
+  select(-num_crimes)
+y_test <- la_test$num_crimes
+
+xgboost_model <- xgboost(data = as.matrix(X_train), 
+                 label = y_train, 
+                 objective = "reg:squarederror", 
+                 nrounds = 100,  # number of iterations
+                 eta = 0.3,       # learning rate
+                 max_depth = 6,   # max depth
+                 subsample = 0.8, # subsample ratio of training
+                 colsample_bytree = 0.8)  # subsample ratio of columns
+
+pred <- predict(xgboost_model, as.matrix(X_test))
+
+postResample(pred, y_test)
+```

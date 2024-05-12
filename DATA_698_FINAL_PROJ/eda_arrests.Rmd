@@ -1,0 +1,50 @@
+---
+title: "EDA Arrests"
+author: "Shoshana Farber"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+```
+
+### Load Data
+
+```{r}
+historic_nypd <- read.csv("data/nypd_arrests_2015_2019.csv", na.strings = "")
+```
+
+### Plots
+
+Crime across boroughs.
+
+```{r}
+historic_nypd |>
+  mutate(arrest_boro = case_when(
+    arrest_boro == "S" ~ "Staten Island",
+    arrest_boro == "K" ~ "Brooklyn",
+    arrest_boro == "B" ~ "Bronx",
+    arrest_boro == "M" ~ "Manhattan",
+    arrest_boro == "Q" ~ "Queens"
+    )) |>
+  ggplot(aes(x = arrest_boro)) +
+  geom_bar(fill = "#475387") +
+  labs(x = "Borough", y = "Number of Crimes") +
+  geom_text(stat='count', aes(label=..count..), vjust=2, color="white", fontface='bold') +
+  scale_y_continuous(label=scales::comma) +
+  theme_classic()
+```
+
+Top crimes.
+
+```{r}
+historic_nypd |>
+  select(-geometry) |>
+  count(ofns_desc) |>
+  arrange(desc(n)) |>
+  head(10)
+```
+
+Drugs, theft, assault, and driving offenses are all in the top 10. 
