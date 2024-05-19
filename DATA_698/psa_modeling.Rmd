@@ -1,0 +1,449 @@
+---
+title: "PSA Modeling"
+author: "Shoshana Farber"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(pROC)
+```
+
+### Load Data
+
+```{r}
+# information on release individuals
+brooklyn_2021_2022 <- read.csv("data/brooklyn_2021_2022.csv")
+
+# psa scored
+nca_scored <- read.csv("data/nca_scored.csv")
+nvca_scored <- read.csv("data/nvca_scored.csv")
+```
+
+### Pretrial Assessment
+
+#### Split Data
+
+```{r}
+# add NCA and NVCA scores to data frame
+brooklyn_2021_2022$nca_score <- nca_scored$nca_score
+brooklyn_2021_2022$nvca_score <- nvca_scored$nvca_score
+
+brooklyn_2021_2022 <- brooklyn_2021_2022 |>
+  mutate(nvca_score = ifelse(nvca_score >= 4, 1, 0))  # flag: "YES" = 1, "NO" = 0
+
+data <- brooklyn_2021_2022 |>
+  mutate(current_violent = ifelse(arraign_charge_category %in% c("Assault", "Strangulation", "Rape", "Homicide Related"), 1, 0),
+         current_property = ifelse(arraign_charge_category %in% c("Larceny", "Robbery", "Burglary"), 1, 0),
+         rearrest_violent = ifelse(rearrest == "Violent felony", 1, 0),
+         rearrest = ifelse(rearrest != "No Arrest", 1, 0),
+         current_misd = ifelse(top_severity_at_arraign == "Misdemeanor", 1, 0)) |>
+  transmute(gender = ifelse(gender == "Male", 1, 0),    # 1- Male, 0 - Female
+            race = ifelse(race == "Black", 1, 0),      # 1 - Black, 0 - Other
+            age_at_arrest,
+            current_violent,
+            current_misd,
+            current_property,
+            prior_vfo_cnt,
+            prior_nonvfo_cnt,
+            prior_misd_cnt,
+            pend_vfo,
+            pend_nonvfo, 
+            pend_misd,
+            ror = ifelse(release_decision_at_arraign == "ROR", 1, 0),
+            nmr = ifelse(release_decision_at_arraign == "Nonmonetary release", 1, 0),
+            nca_score,
+            nvca_score,
+            rearrest,
+            rearrest_violent)
+
+# Set seed for reproducibility
+set.seed(613)
+
+# Sample row indices for the training set
+train_index <- sample(nrow(data), 0.8 * nrow(data))
+
+# Create training and testing sets
+train <- data[train_index, ]
+test <- data[-train_index, ]
+
+train <- train |>
+  drop_na()
+```
+
+If we assume that all those with an NCA score of 4, 5, 6 will be rearrested, what is the difference between the assumed results and the actual outcome?
+
+```{r}
+nca <- test |>
+  mutate(rearrest_assumed = ifelse(nca_score %in% c(4,5,6), 1, 0))
+
+plot(roc(nca$rearrest_assumed, nca$rearrest), print.auc=T)
+
+nca$rearrest_assumed <- factor(nca$rearrest_assumed, levels=c(1,0))
+nca$rearrest <- factor(nca$rearrest, levels=c(1,0))
+
+confusionMatrix(nca$rearrest_assumed, nca$rearrest)
+```
+
+This variation has a few less false positives but is less accurate for true positives. 
+
+```{r}
+effect <- nca |>
+  group_by(rearrest_assumed) |>
+  summarize(group_avg = mean(nca_score),
+         group_size = n(),
+         group_sd = sd(nca_score)) |>
+  mutate(top = (group_size-1)*group_sd)
+
+pooled_sd <- sqrt((effect$top[1]+effect$top[2])/(effect$group_size[1]+effect$group_size[2]))
+
+(effect$group_avg[1]-effect$group_avg[2])/pooled_sd
+```
+
+```{r}
+nvca <- test |>
+  mutate(rearrest_assumed = nvca_score)
+
+roc_curve <- roc(nvca$rearrest_assumed, nvca$rearrest_violent)
+auc(roc_curve)
+
+plot(roc(nvca$rearrest_assumed, nvca$rearrest_violent), print.auc=T)
+```
+
+### Modeling - NCA and NVCA
+
+#### Log Model 
+
+```{r}
+set.seed(613)
+
+train1 <- train 
+test1 <- test
+
+mod1 <- glm(rearrest~current_violent+current_misd+current_property+nca_score+nvca_score, train1, family="binomial")
+
+probabilities1 <- predict(mod1, test1, type = "response")
+pred1 <- ifelse(probabilities1 > 0.5, 1, 0)
+
+plot(roc(pred1, test$rearrest), print.auc=T)
+
+summary(mod1)
+
+pred1 <- factor(pred1, levels=c(1,0))
+test1$rearrest <- factor(test1$rearrest, levels=c(1,0))
+
+confusionMatrix(pred1, test1$rearrest)
+```
+
+#### Random Forest
+
+```{r}
+set.seed(613)
+
+train2 <- train 
+test2 <- test
+
+train2$rearrest <- factor(train2$rearrest, levels=c(1,0))
+test2$rearrest <- factor(test2$rearrest, levels=c(1,0))
+
+mod2 <- randomForest(rearrest~current_violent+current_misd+current_property+nca_score+nvca_score,
+                     train2)
+
+pred2 <- predict(mod2, test2)
+
+plot(roc(pred2, test$rearrest), print.auc=T)
+
+varImpPlot(mod2)
+
+confusionMatrix(pred2, test2$rearrest)
+```
+
+### Modeling - With Features
+
+#### Logistic Regression
+
+```{r}
+# Set seed for reproducibility
+set.seed(613)
+
+train3 <- train |>
+  select(-nca_score, -nvca_score, -rearrest_violent, -gender, -race, -nmr, -ror)
+test3 <- test 
+
+mod3 <- glm(rearrest~., train3, family="binomial")
+
+probabilities3 <- predict(mod3, test3, type = "response")
+pred3 <- ifelse(probabilities3 > 0.5, 1, 0)
+
+plot(roc(pred3, test3$rearrest), print.auc=T)
+
+summary(mod3)
+
+pred3 <- factor(pred3, levels=c(1,0))
+test3$rearrest <- factor(test3$rearrest, levels=c(1,0))
+
+confusionMatrix(pred3, test3$rearrest)
+```
+
+### Model - Random Forest
+
+```{r}
+set.seed(613)
+
+train4 <- train |>
+  select(-nca_score, -nvca_score, -rearrest_violent, -gender, -race, -nmr, -ror)
+test4 <- test
+
+train4$rearrest <- factor(train4$rearrest, levels=c(1,0))
+test4$rearrest <- factor(test4$rearrest, levels=c(1,0))
+
+mod4 <- randomForest(rearrest~.,
+                     train4)
+
+pred4 <- predict(mod4, test4)
+
+plot(roc(pred4, test$rearrest), print.auc=T)
+
+varImpPlot(mod4)
+
+confusionMatrix(pred4, test4$rearrest)
+```
+
+### Log with Bail
+
+```{r}
+# Set seed for reproducibility
+set.seed(613)
+
+train5 <- train |>
+  select(-nca_score, -nvca_score, -rearrest_violent, -gender, -race)
+test5 <- test 
+
+mod5 <- glm(rearrest~., train5, family="binomial")
+
+probabilities5 <- predict(mod5, test5, type = "response")
+pred5 <- ifelse(probabilities5 > 0.5, 1, 0)
+
+plot(roc(pred5, test5$rearrest), print.auc=T)
+
+summary(mod5)
+
+pred5 <- factor(pred5, levels=c(1,0))
+test5$rearrest <- factor(test5$rearrest, levels=c(1,0))
+
+confusionMatrix(pred5, test5$rearrest)
+```
+
+### Model - Random Forest with Bail
+
+```{r}
+set.seed(613)
+
+train6 <- train |>
+  select(-nca_score, -nvca_score, -rearrest_violent, -gender, -race)
+test6 <- test
+
+train6$rearrest <- factor(train6$rearrest, levels=c(1,0))
+test6$rearrest <- factor(test6$rearrest, levels=c(1,0))
+
+mod6 <- randomForest(rearrest~.,
+                     train6)
+
+pred6 <- predict(mod6, test6)
+
+plot(roc(pred6, test$rearrest), print.auc=T)
+
+varImpPlot(mod6)
+
+confusionMatrix(pred6, test6$rearrest)
+```
+
+### Predict Release 
+
+```{r}
+brooklyn_release <- brooklyn_2021_2022 |>
+  transmute(gender = ifelse(gender == "Male", 1, 0),         # female = 0, male = 1
+            race = ifelse(race == "Black", 1, 0),      # white = 0, black = 1
+            ethnicity = ifelse(ethnicity == "Hispanic", 1, 0),    # non-hispanic = 0, hispanic = 1
+            age_at_arrest,
+            current_misdemeanor = ifelse(top_severity_at_arraign == "Misdemeanor", 1, 0),
+            #current_violent_felony = ifelse(top_charge_at_arrest_violent_felony_ind == "Y", 1, 0),
+            hired_counsel = ifelse(representation_type == "Retained Attorney", 1, 0),
+            prior_vfo_cnt,
+            prior_nonvfo_cnt,
+            prior_misd_cnt,
+            pend_vfo,
+            pend_nonvfo, 
+            pend_misd,
+            nca_score,
+            nvca_score = ifelse(nvca_score >= 4, 1, 0),  # 1,2,3 = low risk (0), 4,5,6 = high risk (1)
+            ror = ifelse(release_decision_at_arraign == "ROR", 1, 0),
+            nmr = ifelse(release_decision_at_arraign == "Nonmonetary release", 1, 0),
+            bail = ifelse(release_decision_at_arraign == "Bail-set", 1, 0),
+            rearrest = ifelse(rearrest != "No Arrest", 1, 0))
+```
+
+#### Using Data
+
+```{r}
+# Set seed for reproducibility
+set.seed(613)
+
+# Sample row indices for the training set
+train_index <- sample(nrow(brooklyn_release), 0.8 * nrow(brooklyn_release))
+
+# Create training and testing sets
+train <- brooklyn_release[train_index, ] |>
+  drop_na()
+test <- brooklyn_release[-train_index, ] |>
+  drop_na()
+
+train1 <- train |>
+  select(-nmr, -bail, -nca_score, -nvca_score)
+test1 <- test 
+
+release_mod1 <- glm(ror ~ . - rearrest, 
+                    train1, 
+                    family="binomial")
+
+release_probabilities1 <- predict(release_mod1, test, type = "response")
+release_pred1 <- ifelse(release_probabilities1 > 0.5, 1, 0)
+
+plot(roc(release_pred1, test$ror), print.auc=T)
+
+summary(release_mod1)
+
+release_pred1 <- factor(release_pred1, levels=c(1,0))
+test1$ror <- factor(test1$ror, levels=c(1,0))
+
+confusionMatrix(release_pred1, test1$ror)
+```
+
+### Using PSA
+
+```{r}
+# Set seed for reproducibility
+set.seed(613)
+
+train2 <- train |>
+  drop_na() |>
+  select(-prior_vfo_cnt, -prior_nonvfo_cnt, -prior_misd_cnt, -pend_vfo, -pend_misd, -bail, -nmr, -pend_nonvfo)
+test2 <- test
+
+release_mod2 <- glm(ror ~ . - rearrest, 
+                    train2, 
+                    family="binomial")
+
+release_probabilities2 <- predict(release_mod2, test, type = "response")
+release_pred2 <- ifelse(release_probabilities2 > 0.5, 1, 0)
+
+plot(roc(release_pred2, test$ror), print.auc=T)
+
+summary(release_mod2)
+
+release_pred2 <- factor(release_pred2, levels=c(1,0))
+test2$ror <- factor(test$ror, levels=c(1,0))
+
+confusionMatrix(release_pred2, test2$ror)
+```
+
+
+```{r}
+# Set seed for reproducibility
+set.seed(613)
+
+# Sample row indices for the training set
+train_index <- sample(nrow(brooklyn_release), 0.8 * nrow(brooklyn_release))
+
+# Create training and testing sets
+train <- brooklyn_release[train_index, ] |>
+  drop_na()
+test <- brooklyn_release[-train_index, ] |>
+  drop_na()
+
+train1 <- train |>
+  select(-prior_vfo_cnt, -prior_nonvfo_cnt, -prior_misd_cnt, -pend_vfo, -pend_misd, -bail, -ror)
+test1 <- test 
+
+release_mod1 <- glm(nmr ~ . - rearrest, 
+                    train1, 
+                    family="binomial")
+
+release_probabilities1 <- predict(release_mod1, test, type = "response")
+release_pred1 <- ifelse(release_probabilities1 > 0.5, 1, 0)
+
+plot(roc(release_pred1, test$nmr), print.auc=T)
+
+summary(release_mod1)
+
+release_pred1 <- factor(release_pred1, levels=c(1,0))
+test1$nmr <- factor(test1$nmr, levels=c(1,0))
+
+confusionMatrix(release_pred1, test1$nmr)
+```
+
+```{r}
+# Set seed for reproducibility
+set.seed(613)
+
+# Sample row indices for the training set
+train_index <- sample(nrow(brooklyn_release), 0.8 * nrow(brooklyn_release))
+
+# Create training and testing sets
+train <- brooklyn_release[train_index, ] |>
+  drop_na()
+test <- brooklyn_release[-train_index, ] |>
+  drop_na()
+
+train1 <- train |>
+  select(-prior_vfo_cnt, -prior_nonvfo_cnt, -prior_misd_cnt, -pend_vfo, -pend_misd, -nmr, -ror)
+test1 <- test 
+
+release_mod1 <- glm(bail ~ . - rearrest, 
+                    train1, 
+                    family="binomial")
+
+release_probabilities1 <- predict(release_mod1, test, type = "response")
+release_pred1 <- ifelse(release_probabilities1 > 0.5, 1, 0)
+
+plot(roc(release_pred1, test$bail), print.auc=T)
+
+summary(release_mod1)
+
+release_pred1 <- factor(release_pred1, levels=c(1,0))
+test1$bail <- factor(test1$bail, levels=c(1,0))
+
+confusionMatrix(release_pred1, test1$bail)
+```
+
+### Using PSA
+
+```{r}
+# Set seed for reproducibility
+set.seed(613)
+
+train2 <- train |>
+  drop_na() |>
+  select(-prior_vfo_cnt, -prior_nonvfo_cnt, -prior_misd_cnt, -pend_vfo, -pend_misd, -bail, -ror)
+test2 <- test
+
+release_mod2 <- glm(nmr ~ . - rearrest, 
+                    train2, 
+                    family="binomial")
+
+release_probabilities2 <- predict(release_mod2, test, type = "response")
+release_pred2 <- ifelse(release_probabilities2 > 0.5, 1, 0)
+
+plot(roc(release_pred2, test$nmr), print.auc=T)
+
+summary(release_mod2)
+
+release_pred2 <- factor(release_pred2, levels=c(1,0))
+test2$nmr <- factor(test$nmr, levels=c(1,0))
+
+confusionMatrix(release_pred2, test2$nmr)
+```

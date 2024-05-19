@@ -1,0 +1,333 @@
+---
+title: "PSA Evaluation"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+```
+
+### Load Data
+
+```{r}
+# information on release individuals
+brooklyn_2021_2022 <- read.csv("data/brooklyn_2021_2022.csv")
+
+# psa scored
+nca_scored <- read.csv("data/nca_scored.csv")
+nvca_scored <- read.csv("data/nvca_scored.csv")
+```
+
+### Data Exploration
+
+**Distribution of release decisions.**
+
+```{r}
+brooklyn_2021_2022 |>
+  count(release_decision_at_arraign) |>
+  mutate(total = sum(n),
+         perc = (n/total)*100) |>
+  select(release_decision_at_arraign, n, perc)
+```
+
+Majority were released on recognizance (67%). 
+
+**Distribution of gender.**
+
+```{r}
+brooklyn_2021_2022 |>
+  count(gender) |>
+  mutate(total = sum(n),
+         perc = (n/total)*100) |>
+  select(gender, n, perc) 
+```
+
+Majority of those arrested were male (83%). 
+
+**Distribution of race.**
+
+```{r}
+brooklyn_2021_2022 |>
+  count(race) |>
+  mutate(total = sum(n),
+         perc = (n/total)*100) |>
+  select(race, n, perc) 
+```
+
+Majority were black (65%). 
+
+**Average age across data.**
+
+```{r}
+brooklyn_2021_2022 |>
+  summarize(mean(age_at_arrest))
+```
+
+Average age is 35. 
+
+**Distribution of charges.**
+
+- Violent charges include assault, rape, strangulation, and homicide.
+- Property charges include those already mentioning property and any cases of theft (robbery, larceny, burglary).
+
+```{r}
+charges <- brooklyn_2021_2022 |>
+  mutate(arraign_charge_category = ifelse(arraign_charge_category %in% c("Larceny", "Robbery", "Burglary"), "Property", arraign_charge_category),
+         arraign_charge_category = ifelse(arraign_charge_category %in% c("Assault", "Strangulation", "Rape", "Homicide Related"), "Violent", arraign_charge_category),
+         arraign_charge_category = ifelse(!arraign_charge_category %in% c("Property", "Violent", "Drug", "Criminal Contempt"), "Other", arraign_charge_category)) 
+
+charges |>
+  count(arraign_charge_category) |>
+  arrange(desc(n)) |>
+  mutate(total = sum(n),
+         perc = (n/total)*100) |>
+  select(arraign_charge_category, n, perc)
+```
+
+Overall, 44% were arrested for violent charges, 25% for property, 20% other, 6.7% criminal contempt, and 5.2% drug. 
+
+**Charges by release decision.**
+
+```{r}
+charges |>
+  filter(release_decision_at_arraign == "Bail-set") |>
+  count(arraign_charge_category) |>
+  arrange(desc(n)) |>
+  mutate(total = sum(n),
+         perc = (n/total)*100) |>
+  select(arraign_charge_category, n, perc)
+```
+
+```{r}
+charges |>
+  filter(release_decision_at_arraign == "ROR") |>
+  count(arraign_charge_category) |>
+  arrange(desc(n)) |>
+  mutate(total = sum(n),
+         perc = (n/total)*100) |>
+  select(arraign_charge_category, n, perc)
+```
+
+```{r}
+charges |>
+  filter(release_decision_at_arraign == "Nonmonetary release") |>
+  count(arraign_charge_category) |>
+  arrange(desc(n)) |>
+  mutate(total = sum(n),
+         perc = (n/total)*100) |>
+  select(arraign_charge_category, n, perc)
+```
+
+**Rearrest outcomes.**
+
+```{r}
+charges |>
+  mutate(rearrest_violent = ifelse(rearrest == "Violent felony", 1, 0),
+         rearrest = ifelse(rearrest != "No Arrest", 1, 0)) |>
+  summarize(total = n(),
+            rearrest = sum(rearrest),
+            rearrest_violent = sum(rearrest_violent),
+            perc_rearrest = (rearrest/total)*100,
+            perc_rearrest_violent = (rearrest_violent/total)*100)
+```
+
+**Rearrest outcomes based on release decision.**
+
+```{r}
+charges |>
+  filter(release_decision_at_arraign == "Bail-set") |>
+  mutate(rearrest_violent = ifelse(rearrest == "Violent felony", 1, 0),
+         rearrest = ifelse(rearrest != "No Arrest", 1, 0)) |>
+  summarize(total = n(),
+            rearrest = sum(rearrest),
+            rearrest_violent = sum(rearrest_violent),
+            perc_rearrest = (rearrest/total)*100,
+            perc_rearrest_violent = (rearrest_violent/total)*100)
+```
+
+```{r}
+charges |>
+  filter(release_decision_at_arraign == "ROR") |>
+  mutate(rearrest_violent = ifelse(rearrest == "Violent felony", 1, 0),
+         rearrest = ifelse(rearrest != "No Arrest", 1, 0)) |>
+  summarize(total = n(),
+            rearrest = sum(rearrest),
+            rearrest_violent = sum(rearrest_violent),
+            perc_rearrest = (rearrest/total)*100,
+            perc_rearrest_violent = (rearrest_violent/total)*100)
+```
+
+```{r}
+charges |>
+  filter(release_decision_at_arraign == "Nonmonetary release") |>
+  mutate(rearrest_violent = ifelse(rearrest == "Violent felony", 1, 0),
+         rearrest = ifelse(rearrest != "No Arrest", 1, 0)) |>
+  summarize(total = n(),
+            rearrest = sum(rearrest),
+            rearrest_violent = sum(rearrest_violent),
+            perc_rearrest = (rearrest/total)*100,
+            perc_rearrest_violent = (rearrest_violent/total)*100)
+```
+
+### Public Safety Assessment
+
+Data frame to determine whether each case falls into specific PSA factor. 
+
+```{r}
+nca <- charges |>
+  transmute(age_at_arrest_cat = ifelse(age_at_arrest < 23, "<23", "23+"),
+            current_violent_offense = ifelse(arraign_charge_category == "Violent", "Yes", "No"),
+            current_violent_less_20 = ifelse((arraign_charge_category == "Violent" & age_at_arrest <= 20), "Yes", "No"),
+            pend_charge = ifelse(pend_misd+pend_vfo+pend_nonvfo >= 1, "Yes", "No"),
+            prior_misd = ifelse(prior_misd_cnt > 0, "Yes", "No"),
+            prior_felony = ifelse(prior_nonvfo_cnt + prior_vfo_cnt > 0, "Yes", "No"),
+            prior = ifelse(prior_misd_cnt + prior_nonvfo_cnt + prior_vfo_cnt > 0, "Yes", "No"),
+            prior_violent = case_when((prior_vfo_cnt == 1 | prior_vfo_cnt == 2) ~ "Yes, 1 or 2",
+                                       prior_vfo_cnt >= 3 ~ "Yes, 3 or more",
+                                       TRUE ~ "No"),
+            release_decision_at_arraign) 
+```
+
+Distributions for each risk factor.
+
+```{r}
+nca |>
+  count(age_at_arrest_cat)
+
+nca |>
+  count(current_violent_offense)
+
+nca |>
+  count(current_violent_less_20)
+
+nca |>
+  count(pend_charge)
+
+nca |>
+  count(prior_misd)
+
+nca |>
+  count(prior_felony)
+
+nca |>
+  count(prior)
+
+nca |>
+  count(prior_violent)
+```
+
+Distributions based on release decision. 
+
+```{r}
+nca |>
+  group_by(release_decision_at_arraign) |>
+  count(age_at_arrest_cat)
+
+nca |>
+  group_by(release_decision_at_arraign) |>
+  count(current_violent_offense)
+
+nca |>
+  group_by(release_decision_at_arraign) |>
+  count(current_violent_less_20)
+
+nca |>
+  group_by(release_decision_at_arraign) |>
+  count(pend_charge)
+
+nca |>
+  group_by(release_decision_at_arraign) |>
+  count(prior_misd)
+
+nca |>
+  group_by(release_decision_at_arraign) |>
+  count(prior_felony)
+
+nca |>
+  group_by(release_decision_at_arraign) |>
+  count(prior)
+
+nca |>
+  group_by(release_decision_at_arraign) |>
+  count(prior_violent)
+```
+
+### PSA Scores
+
+Total within each score. 
+
+```{r}
+nca_scored |>
+  count(nca_score)
+```
+
+```{r}
+nvca_scored |>
+  count(nvca_score)
+```
+
+Totals based on release decision.
+
+```{r}
+nca_scored |>
+  group_by(release_decision_at_arraign) |>
+  count(nca_score) |>
+  pivot_wider(names_from = release_decision_at_arraign,
+              values_from = n)
+```
+
+```{r}
+nvca_scored |>
+  group_by(release_decision_at_arraign) |>
+  count(nvca_score) |>
+  pivot_wider(names_from = release_decision_at_arraign,
+              values_from = n)
+```
+
+#### Differences in PSA Scores Between Release Decisions
+
+```{r}
+nca_scored |>
+  group_by(release_decision_at_arraign) |>
+  summarize(NCA = mean(nca_score))
+```
+
+```{r}
+nvca_scored |>
+  group_by(release_decision_at_arraign) |>
+  summarize(NVCA = mean(nvca_score))
+```
+
+### Success of PSA Score
+
+Failure percents for NCA scores. 
+
+```{r}
+nca_score_totals <- nca_scored |>
+  count(nca_score)
+
+nca_scored |>
+  filter(rearrest != "No Arrest") |>
+  count(nca_score) |> 
+  left_join(nca_score_totals, by = "nca_score") |>
+  mutate(perc = (n.x/n.y)*100)
+```
+
+Failure percents for NVCA scores. 
+
+```{r}
+nvca_score_totals <- nvca_scored |>
+  count(nvca_score) 
+
+nvca_scored |>
+  filter(rearrest == "Violent felony") |>
+  count(nvca_score) |> 
+  left_join(nvca_score_totals, by = "nvca_score") |>
+  mutate(perc = (n.x/n.y)*100)
+```
+
+
+
+
